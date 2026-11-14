@@ -6,6 +6,9 @@ and watch tokens and tool calls stream live.
 
 > Status: **Phase 0 — scaffold & spike.** See the roadmap below.
 
+Design docs: [Project spec](docs/PROJECT_SPEC.md) · [Architecture](docs/ARCHITECTURE.md) ·
+[API design](docs/API_DESIGN.md) · [Implementation roadmap](docs/IMPLEMENTATION_ROADMAP.md)
+
 ## Stack
 
 | Layer | Tech |
