@@ -22,7 +22,8 @@ describe("Agents pages (integration with mocked API)", () => {
       ],
     });
     renderApp("/agents");
-    const card = await screen.findByRole("link", { name: /Research Assistant/ });
+    const card = await screen.findByRole("link", { name: "Research Assistant" });
+    expect(screen.getByRole("link", { name: "Chat with Research Assistant" })).toHaveAttribute("href", "/agents/a-1/chat");
     expect(card).toHaveAttribute("href", "/agents/a-1");
     expect(screen.getByText("qwen3:4b")).toBeInTheDocument();
     expect(await screen.findByLabelText("Ollama: Online")).toBeInTheDocument();

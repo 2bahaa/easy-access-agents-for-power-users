@@ -1,11 +1,17 @@
+import type { AgentEvent } from "./events";
+import { readSSE } from "./sse";
 import type {
   Agent,
   AgentSummary,
   AgentWrite,
+  Conversation,
+  ConversationSummary,
   Health,
   ModelInfo,
   ProblemDetails,
   ProviderInfo,
+  Run,
+  RunEventRecord,
   Skill,
   SkillSummary,
   SkillWrite,
@@ -55,6 +61,16 @@ export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+async function toApiError(response: Response): Promise<ApiError> {
+  let problem: ProblemDetails;
+  try {
+    problem = (await response.json()) as ProblemDetails;
+  } catch {
+    problem = { detail: response.statusText || `Request failed (${response.status})` };
+  }
+  return new ApiError(response.status, problem);
+}
+
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
@@ -64,17 +80,33 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
       ...init.headers,
     },
   });
-  if (!response.ok) {
-    let problem: ProblemDetails;
-    try {
-      problem = (await response.json()) as ProblemDetails;
-    } catch {
-      problem = { detail: response.statusText || `Request failed (${response.status})` };
-    }
-    throw new ApiError(response.status, problem);
-  }
+  if (!response.ok) throw await toApiError(response);
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+/**
+ * Send a chat message and stream the run's events (SSE over a POST response).
+ * Errors before the stream starts (404/409/422) are thrown as ApiError; aborting the
+ * signal closes the connection, which cancels the run on the server.
+ */
+export async function* streamMessage(
+  conversationId: string,
+  content: string,
+  signal?: AbortSignal,
+): AsyncGenerator<AgentEvent> {
+  const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+    body: JSON.stringify({ content }),
+    signal,
+  });
+  if (!response.ok) throw await toApiError(response);
+  if (!response.body) throw new Error("The server returned an empty stream.");
+  for await (const message of readSSE(response.body)) {
+    if (!message.data) continue;
+    yield JSON.parse(message.data) as AgentEvent;
+  }
 }
 
 const json = (method: string, body: unknown): RequestInit => ({
@@ -98,6 +130,17 @@ export const api = {
   deleteSkill: (id: string) => request<void>(`/skills/${id}`, { method: "DELETE" }),
 
   listTools: () => request<ToolInfo[]>("/tools"),
+
+  listConversations: (agentId: string) =>
+    request<ConversationSummary[]>(`/conversations?agent_id=${encodeURIComponent(agentId)}`),
+  getConversation: (id: string) => request<Conversation>(`/conversations/${id}`),
+  createConversation: (agentId: string) =>
+    request<ConversationSummary>("/conversations", json("POST", { agent_id: agentId })),
+  deleteConversation: (id: string) => request<void>(`/conversations/${id}`, { method: "DELETE" }),
+
+  getRun: (id: string) => request<Run>(`/runs/${id}`),
+  listRunEvents: (id: string) => request<RunEventRecord[]>(`/runs/${id}/events`),
+  cancelRun: (id: string) => request<void>(`/runs/${id}/cancel`, { method: "POST" }),
   listProviders: () => request<ProviderInfo[]>("/providers"),
   listModels: (provider: string) =>
     request<ModelInfo[]>(`/providers/${encodeURIComponent(provider)}/models`),

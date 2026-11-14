@@ -1,4 +1,4 @@
-import { ArrowUpRight, Bot, Cpu, Plus, Search } from "lucide-react";
+import { Bot, Cpu, MessageSquare, Plus, Search } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 
@@ -83,33 +83,40 @@ export function AgentsPage() {
           <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label="Agents">
             {filtered.map((agent) => (
               <li key={agent.id}>
-                <Link
-                  to={`/agents/${agent.id}`}
-                  className="group block h-full rounded-2xl focus-visible:outline-offset-4"
-                >
-                  <Card className="relative flex h-full flex-col p-5 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-brand-500/40 group-hover:shadow-pop">
-                    <ArrowUpRight className="absolute top-4 right-4 size-4 text-subtle opacity-0 transition-opacity group-hover:opacity-100" />
-                    <div className="flex items-center gap-3">
-                      <AgentAvatar name={agent.name} />
-                      <div className="min-w-0">
-                        <h2 className="truncate font-semibold tracking-tight">{agent.name}</h2>
-                        <p className="text-xs text-subtle">
-                          Updated {relativeTime(agent.updated_at)}
-                        </p>
-                      </div>
+                <Card className="group relative flex h-full flex-col p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-500/40 hover:shadow-pop">
+                  <div className="flex items-center gap-3">
+                    <AgentAvatar name={agent.name} />
+                    <div className="min-w-0">
+                      <h2 className="truncate font-semibold tracking-tight">
+                        {/* Stretched link: the whole card opens the editor. */}
+                        <Link
+                          to={`/agents/${agent.id}`}
+                          className="after:absolute after:inset-0 after:rounded-2xl focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-brand-500"
+                        >
+                          {agent.name}
+                        </Link>
+                      </h2>
+                      <p className="text-xs text-subtle">Updated {relativeTime(agent.updated_at)}</p>
                     </div>
-                    <p className="mt-4 line-clamp-2 min-h-10 flex-1 text-sm text-muted">
-                      {agent.description || "No description."}
-                    </p>
-                    <div className="mt-4 flex items-center gap-2 border-t border-line pt-3 text-xs text-muted">
-                      <Cpu className="size-3.5 text-subtle" />
-                      <span className="truncate font-mono">{agent.model}</span>
-                      <span className="ml-auto rounded-md bg-surface-2 px-1.5 py-0.5 text-[11px] capitalize">
-                        {agent.provider}
-                      </span>
-                    </div>
-                  </Card>
-                </Link>
+                  </div>
+                  <p className="mt-4 line-clamp-2 min-h-10 flex-1 text-sm text-muted">
+                    {agent.description || "No description."}
+                  </p>
+                  <div className="mt-4 flex items-center gap-2 border-t border-line pt-3 text-xs text-muted">
+                    <Cpu className="size-3.5 shrink-0 text-subtle" />
+                    <span className="min-w-0 truncate font-mono">{agent.model}</span>
+                    <LinkButton
+                      to={`/agents/${agent.id}/chat`}
+                      size="sm"
+                      variant="primary"
+                      icon={<MessageSquare className="size-3.5" />}
+                      className="relative z-10 ml-auto"
+                      aria-label={`Chat with ${agent.name}`}
+                    >
+                      Chat
+                    </LinkButton>
+                  </div>
+                </Card>
               </li>
             ))}
           </ul>

@@ -12,6 +12,9 @@ export const keys = {
   tools: ["tools"] as const,
   providers: ["providers"] as const,
   models: (provider: string) => ["providers", provider, "models"] as const,
+  conversations: (agentId: string) => ["conversations", { agentId }] as const,
+  conversation: (id: string) => ["conversation", id] as const,
+  runEvents: (runId: string) => ["runs", runId, "events"] as const,
 };
 
 export const useHealth = () =>
@@ -83,6 +86,50 @@ export function useDeleteSkill() {
       qc.removeQueries({ queryKey: keys.skill(id) });
       void qc.invalidateQueries({ queryKey: keys.skills, exact: true });
       void qc.invalidateQueries({ queryKey: keys.agents });
+    },
+  });
+}
+
+export const useConversations = (agentId: string | undefined) =>
+  useQuery({
+    queryKey: keys.conversations(agentId ?? ""),
+    queryFn: () => api.listConversations(agentId!),
+    enabled: !!agentId,
+  });
+
+export const useConversation = (id: string | undefined) =>
+  useQuery({
+    queryKey: keys.conversation(id ?? ""),
+    queryFn: () => api.getConversation(id!),
+    enabled: !!id,
+  });
+
+/** Persisted timeline of a finished run (immutable once the run has ended). */
+export const useRunEvents = (runId: string | undefined, enabled = true) =>
+  useQuery({
+    queryKey: keys.runEvents(runId ?? ""),
+    queryFn: () => api.listRunEvents(runId!),
+    enabled: !!runId && enabled,
+    staleTime: Infinity,
+  });
+
+export function useCreateConversation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.createConversation,
+    onSuccess: (conversation) => {
+      void qc.invalidateQueries({ queryKey: keys.conversations(conversation.agent_id) });
+    },
+  });
+}
+
+export function useDeleteConversation(agentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.deleteConversation,
+    onSuccess: (_, id) => {
+      qc.removeQueries({ queryKey: keys.conversation(id) });
+      void qc.invalidateQueries({ queryKey: keys.conversations(agentId) });
     },
   });
 }

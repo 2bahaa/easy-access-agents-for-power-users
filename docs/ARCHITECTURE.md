@@ -64,14 +64,16 @@ Verified versions (Phase 0): Python 3.12, LangGraph 1.2.22, langchain-core 1.8, 
 ### Frontend (`frontend/src/`)
 | Folder | Responsibility |
 |---|---|
-| `api/` | `client.ts` (fetch wrapper, problem-JSON → `ApiError`), `types.ts` (mirrors backend schemas), `queries.ts` (TanStack Query hooks + cache invalidation); SSE parser in Phase 6 |
-| `features/` | Route-level containers that fetch data and wire mutations: `agents/`, `skills/`, `tools/` (chat/runs in Phase 6) |
-| `components/` | Prop-driven SDK candidates (no fetching): `AgentBuilder`, `ModelPicker`, `SkillSelector`, `ToolPicker`, `SchemaFields`, `SkillEditor`; later `AgentChat`, `AgentRunTimeline` |
+| `api/` | `client.ts` (fetch wrapper, problem-JSON → `ApiError`, `streamMessage()` async generator), `types.ts` (mirrors backend schemas), `events.ts` (TS union mirroring `AgentEvent`), `sse.ts` (incremental SSE parser), `queries.ts` (TanStack Query hooks + cache invalidation) |
+| `features/` | Route-level containers that fetch data and wire mutations: `agents/`, `skills/`, `tools/`, `chat/` (`ChatPage`, `ConversationList`, `useRunStream`) |
+| `components/` | Prop-driven SDK candidates (no fetching): `AgentBuilder`, `ModelPicker`, `SkillSelector`, `ToolPicker`, `SchemaFields`, `SkillEditor`, `AgentChat`, `AgentRunTimeline`, `Markdown` (safe renderer — React elements only, no HTML injection) |
 | `components/ui/` | Design-system primitives: Button/LinkButton, Field/Input/Select/Textarea, Card/Section, Badge, Switch, ConfirmDialog, Toast, empty/error/skeleton states |
-| `lib/` | Pure logic: agent/skill form mapping and validation, schema helpers, formatting |
+| `lib/` | Pure logic: agent/skill form mapping and validation, `runReducer` (events → run state/timeline, also replays persisted `run_events`), `transcript` (messages + runs → chat items), schema helpers, formatting |
 | `layout/`, `routes.tsx` | App shell (sidebar, live system status), page header, routes |
 
-**Styling:** Tailwind v4 with semantic color tokens (`canvas`, `surface`, `line`, `fg`, `muted`) defined in `src/index.css`; they switch with `prefers-color-scheme`, so components need no per-theme classes. **Tool config forms** are generated from each tool's Pydantic `config_schema` (title, description, default, examples), so new tools need no UI code. **Dev proxy:** Vite forwards `/api` to `127.0.0.1:8000` (one origin, no CORS in development).
+**Styling:** Tailwind v4 with semantic color tokens (`canvas`, `surface`, `line`, `fg`, `muted`) defined in `src/index.css`; they switch with `prefers-color-scheme`, so components need no per-theme classes. **Tool config forms** are generated from each tool's Pydantic `config_schema` (title, description, default, examples), so new tools need no UI code. **Dev proxy:** Vite forwards `/api` to `127.0.0.1:8000` (one origin, no CORS in development); it streams SSE without buffering.
+
+**Chat data flow:** `useRunStream` POSTs the message and reduces streamed events with `runReducer`; the page shows persisted transcript + the live run. When the run ends, the conversation is refetched and the live view is swapped for the persisted messages (same message ids, so no duplicates). Timelines of past runs are rebuilt from `GET /runs/{id}/events` with the same reducer. The chat route is `agents/:agentId/chat/:conversationId?` (one route, optional segment) so creating a conversation mid-send does not remount the page. Closing the page aborts the request, which the backend treats as cancel.
 
 ## 4. Folder structure
 

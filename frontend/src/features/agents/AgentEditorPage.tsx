@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from "lucide-react";
+import { MessageSquare, Plus, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
@@ -93,6 +93,18 @@ export function AgentEditorPage() {
           isNew
             ? "Configure the model, instructions, skills and tools, then save."
             : "Edit configuration. Changes apply to new runs."
+        }
+        actions={
+          !isNew &&
+          agentId && (
+            <LinkButton
+              to={`/agents/${agentId}/chat`}
+              variant="primary"
+              icon={<MessageSquare className="size-4" />}
+            >
+              Open chat
+            </LinkButton>
+          )
         }
       />
 

@@ -4,7 +4,7 @@ An Agent Studio for building, configuring and running your own AI agents:
 pick a model, write instructions, attach Markdown skills, allow specific tools,
 and watch tokens and tool calls stream live.
 
-> Status: **Phase 5 — Agent Studio frontend done.** Chat UI comes next. See the roadmap below.
+> Status: **Phase 6 — streaming chat done.** The MVP works end to end; Phase 7 adds full Docker packaging. See the roadmap below.
 
 Design docs: [Project spec](docs/PROJECT_SPEC.md) · [Architecture](docs/ARCHITECTURE.md) ·
 [API design](docs/API_DESIGN.md) · [Implementation roadmap](docs/IMPLEMENTATION_ROADMAP.md)
@@ -61,6 +61,16 @@ The dev server proxies `/api` to `http://127.0.0.1:8000` (override with
 while uvicorn listens on IPv4 — using `localhost` there results in 502 errors.
 
 The Studio follows your OS light/dark setting.
+
+### Using the Studio
+
+1. **Agents → New agent**: pick a model (look for the **Tools** badge), write instructions,
+   attach skills and enable tools, then **Create agent**.
+2. Click **Chat** on the agent card (or **Open chat** in the editor).
+3. Send a message. Tokens stream live; tool calls appear inline and step by step in the
+   **Run timeline** (right panel, or the activity icon on smaller screens).
+4. **Stop** cancels the run. Conversations and timelines are saved and reload after a
+   refresh or server restart. Leaving the chat page while a run is streaming cancels it.
 
 ## Testing
 
@@ -146,5 +156,5 @@ workspace/   Sandbox folder — the only place the file_reader tool can read
 3. ✅ Runtime — provider registry, LangGraph loop, limits, events
 4. ✅ Conversations & SSE streaming
 5. ✅ Frontend Studio — agent builder, skills, tool picker
-6. Frontend Chat — streaming chat + run timeline
+6. ✅ Frontend Chat — streaming chat + run timeline
 7. Docker & docs

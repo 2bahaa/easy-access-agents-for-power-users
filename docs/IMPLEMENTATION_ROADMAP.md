@@ -44,10 +44,10 @@ Each phase ends with all checks green and a commit. **Standard checks:** backend
 
 **Done when:** AC 1, AC 2 (UI part) and AC 3 work against the running backend; Vitest + RTL tests cover AgentBuilder form validation, ToolPicker and SkillSelector. ✅ (47 frontend tests; verified against the live backend with screenshots in light, dark and narrow layouts.)
 
-## Phase 6 — Frontend Chat
+## Phase 6 — Frontend Chat ✅ (done)
 - SSE parser, run-event reducer, `AgentChat` with live tokens, `AgentRunTimeline`, conversation sidebar, cancel button, reload of history and timelines.
 
-**Done when:** AC 4 and AC 8 pass manually with a tool-capable model; Vitest tests cover the SSE parser (chunk boundaries, multi-line data) and the event reducer.
+**Done when:** AC 4 and AC 8 pass manually with a tool-capable model; Vitest tests cover the SSE parser (chunk boundaries, multi-line data) and the event reducer. ✅ (84 frontend tests; live run verified through the Vite proxy with incremental token delivery, and persisted history/timeline verified via screenshots. With `llama3.2:1b` the tool call and timeline work but the final answer can still be wrong — see PROJECT_SPEC §7.)
 
 ## Phase 7 — Docker & documentation
 - Backend and frontend Dockerfiles; compose runs db + backend (migrations on start) + frontend; backend reaches host Ollama via `host.docker.internal`.

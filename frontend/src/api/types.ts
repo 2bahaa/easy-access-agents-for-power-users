@@ -120,3 +120,49 @@ export interface ProblemDetails {
   detail?: string;
   errors?: Array<{ loc: Array<string | number>; msg: string; type: string }>;
 }
+
+export interface ConversationSummary {
+  id: string;
+  agent_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Message {
+  id: string;
+  run_id: string | null;
+  seq: number;
+  role: "user" | "assistant" | "tool";
+  content: string;
+  tool_calls: Array<{ id: string; name: string; args: Record<string, unknown> }> | null;
+  tool_call_id: string | null;
+  tool_name: string | null;
+  created_at: string;
+}
+
+export type RunStatus = "running" | "completed" | "failed" | "cancelled" | "limit_exceeded" | "timeout";
+
+export interface Run {
+  id: string;
+  conversation_id: string;
+  agent_id: string;
+  status: RunStatus;
+  tool_call_count: number;
+  usage: Record<string, number>;
+  error: string | null;
+  started_at: string;
+  finished_at: string | null;
+}
+
+export interface Conversation extends ConversationSummary {
+  messages: Message[];
+  runs: Run[];
+}
+
+export interface RunEventRecord {
+  seq: number;
+  type: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
