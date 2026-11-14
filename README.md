@@ -4,7 +4,7 @@ An Agent Studio for building, configuring and running your own AI agents:
 pick a model, write instructions, attach Markdown skills, allow specific tools,
 and watch tokens and tool calls stream live.
 
-> Status: **Phase 4 — conversations & streaming done (backend MVP complete).** See the roadmap below.
+> Status: **Phase 5 — Agent Studio frontend done.** Chat UI comes next. See the roadmap below.
 
 Design docs: [Project spec](docs/PROJECT_SPEC.md) · [Architecture](docs/ARCHITECTURE.md) ·
 [API design](docs/API_DESIGN.md) · [Implementation roadmap](docs/IMPLEMENTATION_ROADMAP.md)
@@ -24,7 +24,7 @@ Design docs: [Project spec](docs/PROJECT_SPEC.md) · [Architecture](docs/ARCHITE
 ## Prerequisites
 
 - Python 3.12+ and [uv](https://docs.astral.sh/uv/) (`pip install uv`, then use `uv` or `python -m uv`)
-- Node.js 22+
+- Node.js 22.12+ (dependencies are pinned to versions that support 22.12; `engine-strict` is on)
 - Docker Desktop (for PostgreSQL)
 - [Ollama](https://ollama.com) running locally with a **tool-capable** model (see below)
 
@@ -39,6 +39,29 @@ uv run alembic upgrade head     # create/upgrade the database schema
 uv run uvicorn app.main:app --reload   # API on http://localhost:8000 (docs at /docs)
 ```
 
+> **Run backend commands from `backend/`.** `uv run` finds the project by its
+> `pyproject.toml`, which lives in `backend/`. From the repo root it falls back to
+> whatever Python is on your PATH and fails with `No module named 'app'`.
+> To start the API from the repo root instead, use:
+> `uv run --directory backend uvicorn app.main:app --reload`
+
+### Frontend (Agent Studio)
+
+In a second terminal, with the API running on port 8000:
+
+```bash
+cd frontend
+npm install                     # first time only
+npm run dev                     # Studio on http://localhost:5173
+```
+
+The dev server proxies `/api` to `http://127.0.0.1:8000` (override with
+`VITE_PROXY_TARGET` in `frontend/.env`, see `frontend/.env.example`). It targets
+`127.0.0.1` rather than `localhost` because Node resolves `localhost` to IPv6 `::1`,
+while uvicorn listens on IPv4 — using `localhost` there results in 502 errors.
+
+The Studio follows your OS light/dark setting.
+
 ## Testing
 
 ```bash
@@ -47,7 +70,10 @@ uv run pytest                   # needs the db container running
 uv run ruff check . && uv run mypy app
 ```
 
-Tests use a separate database (`<db>_test`, recreated and migrated on every run;
+Frontend (from `frontend/`): `npm run test` (Vitest + Testing Library), `npm run lint`,
+`npm run typecheck`, `npm run build`.
+
+Backend tests use a separate database (`<db>_test`, recreated and migrated on every run;
 override with `TEST_DATABASE_URL`). Each test runs in a rolled-back transaction.
 
 Symlink-escape tests for `file_reader` are skipped on Windows unless Developer Mode
@@ -108,7 +134,7 @@ It prints every event (tool calls, results, final message, usage).
 
 ```
 backend/     FastAPI app, agent runtime, tools, skills, migrations, tests
-frontend/    React Agent Studio (Phase 5+)
+frontend/    React Agent Studio (Vite, TypeScript, Tailwind)
 workspace/   Sandbox folder — the only place the file_reader tool can read
 ```
 
@@ -119,6 +145,6 @@ workspace/   Sandbox folder — the only place the file_reader tool can read
 2. ✅ Tools — registry, calculator, sandboxed file reader
 3. ✅ Runtime — provider registry, LangGraph loop, limits, events
 4. ✅ Conversations & SSE streaming
-5. Frontend Studio — agent builder, skills, tool picker
+5. ✅ Frontend Studio — agent builder, skills, tool picker
 6. Frontend Chat — streaming chat + run timeline
 7. Docker & docs

@@ -52,7 +52,11 @@ class FileReaderConfig(BaseModel):
     subdir: str = Field(
         default="",
         max_length=300,
-        description="Optional subfolder of the workspace this agent is limited to",
+        title="Subfolder",
+        description=(
+            "Limit this agent to a subfolder of the workspace. Leave empty for the whole workspace."
+        ),
+        examples=["notes"],
     )
 
     @field_validator("subdir")

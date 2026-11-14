@@ -38,11 +38,11 @@ Each phase ends with all checks green and a commit. **Standard checks:** backend
 
 **Done when:** integration tests over the SSE stream (fake model injected via the provider registry) verify event order, single terminal event, persisted messages and events, history included on the next turn, cancellation; data survives app restart (AC 8, backend part). ✅ (153 tests; live uvicorn + Ollama check incl. real client disconnect → `cancelled`.)
 
-## Phase 5 — Frontend Studio
+## Phase 5 — Frontend Studio ✅ (done)
 - Vite + React + TS + Tailwind scaffold, React Router, TanStack Query, API client and types.
 - Agents list and editor (`AgentBuilder`), model picker with tool-support badge, `SkillSelector`, `ToolPicker` with per-tool config, skills library page.
 
-**Done when:** AC 1, AC 2 (UI part) and AC 3 work against the running backend; Vitest + RTL tests cover AgentBuilder form validation, ToolPicker and SkillSelector.
+**Done when:** AC 1, AC 2 (UI part) and AC 3 work against the running backend; Vitest + RTL tests cover AgentBuilder form validation, ToolPicker and SkillSelector. ✅ (47 frontend tests; verified against the live backend with screenshots in light, dark and narrow layouts.)
 
 ## Phase 6 — Frontend Chat
 - SSE parser, run-event reducer, `AgentChat` with live tokens, `AgentRunTimeline`, conversation sidebar, cancel button, reload of history and timelines.

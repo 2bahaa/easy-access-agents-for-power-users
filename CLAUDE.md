@@ -14,7 +14,7 @@ Run from `backend/` (uv is invoked as `python -m uv` on this machine if `uv` is 
 - `uv sync` · `uv run pytest` · `uv run ruff check .` · `uv run ruff format .` · `uv run mypy app`
 - `uv run alembic upgrade head` (Phase 1+)
 
-Run from `frontend/` (Phase 5+): `npm run dev` · `npm run test` · `npm run build` · `npm run lint`
+Run from `frontend/`: `npm run dev` · `npm run test` · `npm run typecheck` · `npm run lint` · `npm run build`. Node 22.12+; `engine-strict` is on — check `engines` before adding/upgrading packages.
 
 Infra: `docker compose up -d db` (PostgreSQL). Ollama runs on the host at `http://localhost:11434`.
 
@@ -27,7 +27,8 @@ Infra: `docker compose up -d db` (PostgreSQL). Ollama runs on the host at `http:
 - Our Postgres tables are the single source of conversation history. No LangGraph checkpointer in the MVP.
 - Schema changes go through Alembic migrations only — never `create_all` outside tests.
 - SSE event types are a single Pydantic discriminated union mirrored by a TypeScript union. Change both together.
-- UI components in `frontend/src/components/` are prop-driven (no data fetching inside) so they can become the SDK later.
+- UI components in `frontend/src/components/` are prop-driven (no data fetching inside) so they can become the SDK later. Data fetching lives in `features/` via the hooks in `api/queries.ts`.
+- Use the semantic color tokens (`bg-surface`, `text-muted`, `border-line`, …) instead of raw grays so light/dark themes keep working.
 
 ## Coding conventions
 - Python 3.12, full type hints, `mypy --strict` clean, ruff clean. Async I/O throughout (async SQLAlchemy, httpx).

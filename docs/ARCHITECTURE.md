@@ -64,10 +64,14 @@ Verified versions (Phase 0): Python 3.12, LangGraph 1.2.22, langchain-core 1.8, 
 ### Frontend (`frontend/src/`)
 | Folder | Responsibility |
 |---|---|
-| `api/` | REST client, SSE parser, TS types mirroring backend schemas and events |
-| `features/` | Data-fetching containers per domain: agents, skills, chat, runs |
-| `components/` | Prop-driven SDK candidates: `AgentBuilder`, `ToolPicker`, `SkillSelector`, `AgentChat`, `AgentRunTimeline` |
-| `pages/`, `routes.tsx` | Routing and page layout |
+| `api/` | `client.ts` (fetch wrapper, problem-JSON → `ApiError`), `types.ts` (mirrors backend schemas), `queries.ts` (TanStack Query hooks + cache invalidation); SSE parser in Phase 6 |
+| `features/` | Route-level containers that fetch data and wire mutations: `agents/`, `skills/`, `tools/` (chat/runs in Phase 6) |
+| `components/` | Prop-driven SDK candidates (no fetching): `AgentBuilder`, `ModelPicker`, `SkillSelector`, `ToolPicker`, `SchemaFields`, `SkillEditor`; later `AgentChat`, `AgentRunTimeline` |
+| `components/ui/` | Design-system primitives: Button/LinkButton, Field/Input/Select/Textarea, Card/Section, Badge, Switch, ConfirmDialog, Toast, empty/error/skeleton states |
+| `lib/` | Pure logic: agent/skill form mapping and validation, schema helpers, formatting |
+| `layout/`, `routes.tsx` | App shell (sidebar, live system status), page header, routes |
+
+**Styling:** Tailwind v4 with semantic color tokens (`canvas`, `surface`, `line`, `fg`, `muted`) defined in `src/index.css`; they switch with `prefers-color-scheme`, so components need no per-theme classes. **Tool config forms** are generated from each tool's Pydantic `config_schema` (title, description, default, examples), so new tools need no UI code. **Dev proxy:** Vite forwards `/api` to `127.0.0.1:8000` (one origin, no CORS in development).
 
 ## 4. Folder structure
 
