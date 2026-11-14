@@ -17,13 +17,13 @@ Each phase ends with all checks green and a commit. **Standard checks:** backend
 
 **Done when:** `alembic upgrade head` on an empty DB and `downgrade base` both work; CRUD integration tests for agents and skills pass (create, read, update, delete, 404, 422, duplicate slug 409). ✅ (27 tests; migration round trip is an automated test.)
 
-## Phase 2 — Tools
+## Phase 2 — Tools ✅ (done)
 - `Tool` base (Args/Config Pydantic models, timeout, async `run`), tool registry, `GET /tools`.
 - `calculator`: AST-based evaluator (numbers, + − × ÷ ** %, parentheses, unary minus; bounded exponent/length).
 - `file_reader`: sandbox under `WORKSPACE_DIR`, optional per-agent `subdir`, size limit, UTF-8 only.
 - Agent service validates tool names against the registry and configs against each tool's `Config`.
 
-**Done when:** unit tests cover valid and malicious calculator input (e.g. `__import__`, names, attribute access, huge powers) and file_reader rejection cases (traversal, absolute path, symlink escape, oversized, binary, subdir escape) — AC 5 at unit level; unknown tool / bad config return 422.
+**Done when:** unit tests cover valid and malicious calculator input (e.g. `__import__`, names, attribute access, huge powers) and file_reader rejection cases (traversal, absolute path, symlink escape, oversized, binary, subdir escape) — AC 5 at unit level; unknown tool / bad config return 422. ✅ (95 tests; symlink-escape tests run on Linux — they skip on Windows without Developer Mode.)
 
 ## Phase 3 — Agent runtime
 - Provider registry + Ollama factory; capability lookup via `/api/show`; `GET /providers`, `GET /providers/{provider}/models`.

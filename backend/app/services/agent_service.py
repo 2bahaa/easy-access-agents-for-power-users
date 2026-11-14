@@ -2,6 +2,7 @@
 
 import uuid
 from collections.abc import Sequence
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +13,7 @@ from app.db.models import Agent, AgentSkill, AgentTool, Skill
 from app.schemas.agents import AgentRead, AgentWrite, ModelParams, ToolSelection
 from app.schemas.skills import SkillRef
 from app.services.errors import DomainValidationError, NotFoundError
+from app.tools.registry import ToolConfigError, ToolRegistry, UnknownToolError
 
 
 def to_read(agent: Agent) -> AgentRead:
@@ -69,7 +71,25 @@ async def _resolve_skills(session: AsyncSession, ids: list[uuid.UUID]) -> dict[u
     return skills
 
 
-def _apply(agent: Agent, data: AgentWrite, skills: dict[uuid.UUID, Skill]) -> None:
+def _validate_tools(data: AgentWrite, registry: ToolRegistry) -> dict[str, dict[str, Any]]:
+    """Return {tool_name: canonical config}; raise 422 for unknown tools or bad configs."""
+    configs: dict[str, dict[str, Any]] = {}
+    for sel in data.tools:
+        try:
+            configs[sel.name] = registry.normalize_config(sel.name, sel.config)
+        except UnknownToolError:
+            raise DomainValidationError(f"Unknown tool: '{sel.name}'") from None
+        except ToolConfigError as e:
+            raise DomainValidationError(str(e)) from None
+    return configs
+
+
+def _apply(
+    agent: Agent,
+    data: AgentWrite,
+    skills: dict[uuid.UUID, Skill],
+    tool_configs: dict[str, dict[str, Any]],
+) -> None:
     agent.name = data.name
     agent.description = data.description
     agent.provider = data.provider
@@ -89,33 +109,40 @@ def _apply(agent: Agent, data: AgentWrite, skills: dict[uuid.UUID, Skill]) -> No
         skill_links.append(link)
     agent.skill_links = skill_links
 
-    # Tool names/configs are validated against the tool registry in Phase 2.
     old_tools = {t.tool_name: t for t in agent.tool_links}
     tool_links = []
-    for sel in data.tools:
-        tool = old_tools.get(sel.name) or AgentTool(tool_name=sel.name)
-        tool.config = sel.config
+    for name, config in tool_configs.items():
+        tool = old_tools.get(name) or AgentTool(tool_name=name)
+        tool.config = config
         tool_links.append(tool)
     agent.tool_links = tool_links
 
 
-async def create_agent(session: AsyncSession, data: AgentWrite, settings: Settings) -> Agent:
+async def create_agent(
+    session: AsyncSession, data: AgentWrite, settings: Settings, registry: ToolRegistry
+) -> Agent:
     _check_limits(data, settings)
+    tool_configs = _validate_tools(data, registry)
     skills = await _resolve_skills(session, data.skill_ids)
     agent = Agent(skill_links=[], tool_links=[])
-    _apply(agent, data, skills)
+    _apply(agent, data, skills, tool_configs)
     session.add(agent)
     await session.commit()
     return await get_agent(session, agent.id)
 
 
 async def update_agent(
-    session: AsyncSession, agent_id: uuid.UUID, data: AgentWrite, settings: Settings
+    session: AsyncSession,
+    agent_id: uuid.UUID,
+    data: AgentWrite,
+    settings: Settings,
+    registry: ToolRegistry,
 ) -> Agent:
     agent = await get_agent(session, agent_id)
     _check_limits(data, settings)
+    tool_configs = _validate_tools(data, registry)
     skills = await _resolve_skills(session, data.skill_ids)
-    _apply(agent, data, skills)
+    _apply(agent, data, skills, tool_configs)
     agent.updated_at = func.now()
     await session.commit()
     return await get_agent(session, agent_id)

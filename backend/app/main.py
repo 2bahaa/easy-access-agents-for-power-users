@@ -9,10 +9,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.api.errors import register_error_handlers
-from app.api.routers import agents, health, skills
+from app.api.routers import agents, health, skills, tools
 from app.config import Settings, get_settings
 from app.db.session import create_engine, create_sessionmaker
 from app.services.skill_service import seed_builtin_skills
+from app.tools.registry import build_default_registry
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Easy Access Agents", version=__version__, lifespan=lifespan)
     app.state.settings = settings
+    app.state.tool_registry = build_default_registry()
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
@@ -42,7 +44,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
     register_error_handlers(app)
-    for router in (health.router, agents.router, skills.router):
+    for router in (health.router, agents.router, skills.router, tools.router):
         app.include_router(router, prefix="/api")
     return app
 
