@@ -17,8 +17,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    database_url: str = "postgresql+asyncpg://eaa:change-me@localhost:5432/eaa"
-    ollama_base_url: str = "http://localhost:11434"
+    database_url: str = "postgresql+asyncpg://eaa:change-me@127.0.0.1:5432/eaa"
+    ollama_base_url: str = "http://127.0.0.1:11434"
     workspace_dir: Path = REPO_ROOT / "workspace"
     skills_dir: Path = BACKEND_DIR / "skills"
 

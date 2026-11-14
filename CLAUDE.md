@@ -16,7 +16,7 @@ Run from `backend/` (uv is invoked as `python -m uv` on this machine if `uv` is 
 
 Run from `frontend/`: `npm run dev` · `npm run test` · `npm run typecheck` · `npm run lint` · `npm run build`. Node 22.12+; `engine-strict` is on — check `engines` before adding/upgrading packages.
 
-Infra: `docker compose up -d db` (PostgreSQL). Ollama runs on the host at `http://localhost:11434`.
+Infra: `docker compose up -d db` (PostgreSQL only, for local dev) · `docker compose up -d --build` (full stack: UI http://localhost:3000, API http://localhost:8001). Ollama runs on the host (`http://127.0.0.1:11434`; containers use `host.docker.internal`). Use `127.0.0.1`, not `localhost`, for local service URLs on this Windows machine (IPv6 `::1` causes 502s/2 s delays).
 
 ## Architecture constraints
 - Layering: `api` → `services` → (`runtime`, `db`). Routers contain no business logic.
@@ -26,6 +26,7 @@ Infra: `docker compose up -d db` (PostgreSQL). Ollama runs on the host at `http:
 - Tools are defined in code (`app/tools/`) and registered in the tool registry; per-agent permission and config live in the DB.
 - Our Postgres tables are the single source of conversation history. No LangGraph checkpointer in the MVP.
 - Schema changes go through Alembic migrations only — never `create_all` outside tests.
+- The backend must run with a single worker (active runs live in process memory).
 - SSE event types are a single Pydantic discriminated union mirrored by a TypeScript union. Change both together.
 - UI components in `frontend/src/components/` are prop-driven (no data fetching inside) so they can become the SDK later. Data fetching lives in `features/` via the hooks in `api/queries.ts`.
 - Use the semantic color tokens (`bg-surface`, `text-muted`, `border-line`, …) instead of raw grays so light/dark themes keep working.

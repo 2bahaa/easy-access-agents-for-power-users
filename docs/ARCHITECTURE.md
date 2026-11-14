@@ -34,7 +34,7 @@ React (Vite)  ── REST (JSON) ──►  FastAPI  api/  (routers, schemas, SS
 | Streaming | SSE: `StreamingResponse` + FastAPI's built-in SSE frame formatter (`fastapi.sse`), own 15 s keep-alive; frontend `fetch` + small SSE parser | One POST per turn streams its run; no extra dependency or job queue |
 | Frontend | React, TypeScript, Vite, Tailwind CSS v4, React Router, TanStack Query | Standard and minimal |
 | Tooling | uv, ruff, mypy, pytest, pytest-asyncio, httpx; Vitest, React Testing Library | |
-| Containers | Docker Compose: Postgres now, backend/frontend in Phase 7; Ollama on host | GPU passthrough on Windows is impractical |
+| Containers | Docker Compose: `db`, `backend` (uv-built venv on `python:3.12-slim`, non-root, migrations on start, 1 worker), `frontend` (Vite build served by nginx, `/api` proxied with SSE buffering off); Ollama on host via `host.docker.internal` | GPU passthrough on Windows is impractical |
 
 Verified versions (Phase 0): Python 3.12, LangGraph 1.2.22, langchain-core 1.8, langchain-ollama 1.1.0, Ollama 0.40.
 
@@ -135,7 +135,7 @@ Tools are not stored as rows; the catalog comes from the code registry. Deleting
      a. `tool_call_count < max_tool_calls`? else end the run: status `limit_exceeded`, `run.failed`
      b. emit `tool.call.started`
      c. tool permitted for this agent? else `tool.call.failed` (`permission`)
-     d. validate args with `Args` → on error `tool.call.failed` (`validation`)
+     d. validate args with `Args` (after unwrapping a schema-echo wrapper some small models emit, e.g. `{"type":"function","parameters":{...}}`) → on error `tool.call.failed` (`validation`)
      e. `asyncio.wait_for(tool.run(...), timeout_s)` → `tool.call.completed`, or `tool.call.failed` (`timeout`/`execution`)
      f. append a `ToolMessage` with the result or a user-safe error, so the model can recover
    - Loop until the model replies without tool calls; LangGraph `recursion_limit` is derived from `max_tool_calls` as a backstop.
@@ -153,7 +153,18 @@ The runtime yields `AgentEvent` objects (Pydantic discriminated union in `runtim
 
 **Single-process limitation:** active runs live in one process's memory, so cancel and the one-run-per-conversation guard assume a single backend worker. Multiple workers would need a shared run registry (e.g. Postgres `LISTEN/NOTIFY` or Redis) — deferred until deployment requires it. The event protocol is specified in `API_DESIGN.md` §4. Because the runtime is transport-agnostic, WebSockets, a CLI or the future SDK can consume the same stream.
 
-## 9. Extension points (postponed features)
+## 9. Deployment (Docker)
+
+| Service | Image | Notes |
+|---|---|---|
+| `db` | `postgres:17-alpine` | Data in the `pgdata` volume; port bound to `127.0.0.1` |
+| `backend` | `backend/Dockerfile` | Runs `alembic upgrade head`, then uvicorn with **one worker** (in-memory run registry); `workspace/` mounted read-only at `/workspace`; health check on `/api/health` |
+| `frontend` | `frontend/Dockerfile` | Static build behind nginx; SPA fallback; `/api` proxied to `backend:8000` with `proxy_buffering off` and 1 h read timeout for SSE |
+
+Inside Docker, `DATABASE_URL` and `OLLAMA_BASE_URL` are set explicitly in `docker-compose.yml`
+(the dev `.env` values point at `127.0.0.1`, which inside a container is the container itself).
+
+## 10. Extension points (postponed features)
 
 | Future feature | Where it plugs in |
 |---|---|

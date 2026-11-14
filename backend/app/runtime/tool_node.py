@@ -40,6 +40,23 @@ def _summarize_validation(e: ValidationError) -> str:
     )
 
 
+_WRAPPER_KEYS = frozenset({"type", "function", "name", "parameters", "arguments"})
+
+
+def unwrap_schema_echo(raw: dict[str, Any]) -> dict[str, Any]:
+    """Undo a common small-model mistake: echoing the function schema around the arguments,
+    e.g. {"type": "function", "function": "file_reader", "parameters": {"path": "x"}}.
+
+    Only unwraps when every key belongs to that wrapper shape and exactly one of
+    "parameters"/"arguments" holds an object. The result is still validated normally,
+    so this never widens what a tool accepts.
+    """
+    if not raw or not set(raw) <= _WRAPPER_KEYS:
+        return raw
+    inner = [raw[k] for k in ("parameters", "arguments") if isinstance(raw.get(k), dict)]
+    return inner[0] if len(inner) == 1 else raw
+
+
 def _preview(text: str) -> str:
     if len(text) <= RESULT_PREVIEW_CHARS:
         return text
@@ -126,7 +143,7 @@ class ToolNode:
         tool = self.registry.get(name)
 
         try:
-            args = tool.parse_args(raw_args)
+            args = tool.parse_args(unwrap_schema_echo(raw_args))
         except ValidationError as e:
             message = f"Invalid arguments: {_summarize_validation(e)}"
             raise _ToolFailure("validation", message) from None

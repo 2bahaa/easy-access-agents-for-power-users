@@ -297,7 +297,7 @@ function ToolChip({
             <ToolIcon name={item.tool} className="size-3.5" />
           )}
         </span>
-        <span className="font-medium">{prettyToolName(item.tool)}</span>
+        <span className="font-medium whitespace-nowrap">{prettyToolName(item.tool)}</span>
         {argText && <span className="max-w-[16rem] truncate font-mono text-muted">{argText}</span>}
         {item.status !== "running" && item.result !== undefined && (
           <>

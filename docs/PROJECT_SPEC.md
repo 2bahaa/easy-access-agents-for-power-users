@@ -1,7 +1,7 @@
 # Project Specification
 
 **Product:** Easy Access Agents for Power Users
-**Status:** Approved for MVP · Phase 0 complete
+**Status:** MVP complete (phases 0–7) · see `IMPLEMENTATION_ROADMAP.md` → MVP acceptance results
 
 ## 1. Vision
 
@@ -61,7 +61,7 @@ Ollama advertises tool support via `/api/show` → `capabilities`. Advertised su
 
 Multi-agent collaboration · drag-and-drop workflow editor (React Flow) · MCP integrations · advanced RAG · production multi-tenant deployment · advanced persistent memory · reusable UI SDK packaging · unrestricted Python execution · authentication.
 
-The architecture must allow these later without a rewrite (see `ARCHITECTURE.md` §9).
+The architecture must allow these later without a rewrite (see `ARCHITECTURE.md` §10).
 
 ## 9. MVP acceptance criteria
 

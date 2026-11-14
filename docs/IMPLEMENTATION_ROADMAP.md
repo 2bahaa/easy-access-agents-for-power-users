@@ -49,11 +49,36 @@ Each phase ends with all checks green and a commit. **Standard checks:** backend
 
 **Done when:** AC 4 and AC 8 pass manually with a tool-capable model; Vitest tests cover the SSE parser (chunk boundaries, multi-line data) and the event reducer. ✅ (84 frontend tests; live run verified through the Vite proxy with incremental token delivery, and persisted history/timeline verified via screenshots. With `llama3.2:1b` the tool call and timeline work but the final answer can still be wrong — see PROJECT_SPEC §7.)
 
-## Phase 7 — Docker & documentation
+## Phase 7 — Docker & documentation ✅ (done)
 - Backend and frontend Dockerfiles; compose runs db + backend (migrations on start) + frontend; backend reaches host Ollama via `host.docker.internal`.
 - README: install, configuration, running locally and via Docker, testing, model selection.
 
-**Done when:** `docker compose up` starts the full stack from a clean checkout; a full manual pass of AC 1–10 succeeds.
+**Done when:** `docker compose up` starts the full stack from a clean checkout; a full manual pass of AC 1–10 succeeds. ✅ (see results below)
+
+## MVP acceptance results
+
+Verified on 2026-11-14 against the Docker stack (`docker compose up -d --build`, all
+traffic through nginx on port 3000) with Ollama `llama3.2:1b`, plus the automated suites
+(backend 162 tests, frontend 84 tests).
+
+| AC | Result | Evidence |
+|---|---|---|
+| 1 Agent CRUD + model picker with tool badge | ✅ | UI (screenshots) and API; model list reports `supports_tools` |
+| 2 Skills attached → system prompt | ✅ | UI; unit test asserts skill content in the system prompt |
+| 3 ToolPicker + per-agent config persisted | ✅ | UI; `file_reader` `subdir` saved and returned normalized |
+| 4 Streaming chat + calculator in timeline | ✅ | Live via nginx: `tool.call.completed` = `406.5`, tokens streamed incrementally; persisted timeline replayed |
+| 5 file_reader works; escapes rejected | ✅ tool / ⚠️ model | In the container: `notes.txt` read; `../`, absolute, drive-letter and app-code paths denied; symlink escapes denied (Linux tests); mount is read-only. `llama3.2:1b` could not issue a well-formed file_reader call (schema echo, wrong tool, JSON as text) — expected to work with `qwen3:4b`. |
+| 6 Unpermitted tool never bound / rejected | ✅ | Runtime tests (bound schemas = permitted tools only; hallucinated call → `permission`) |
+| 7 Limits and timeouts | ✅ | Runtime tests: `max_tool_calls` (across turns and within one message), global caps, per-tool timeout, run timeout |
+| 8 Persistence across restart | ✅ | `docker compose restart backend` → history, runs and timelines intact; stale runs marked failed on startup |
+| 9 Non-tool model blocked | ✅ | Save → 409, run pre-flight → `model_no_tool_support` (tests; no non-tool model installed locally) |
+| 10 Tests, migrations, Docker, README | ✅ | All suites green; migration round trip test; backend runs `alembic upgrade head` on start; README covers Docker, local dev, configuration and troubleshooting |
+
+Issues found and fixed during the final pass: Windows port conflict on 8080 (default UI
+port is now 3000); ~2 s connection delay from `localhost` → IPv6 on Windows (defaults now
+use `127.0.0.1`); a test-only race between concurrent requests on a shared session (the
+"run already active" check now happens before any DB access); small models echoing the
+tool schema around arguments (now unwrapped before normal validation).
 
 ## Acceptance criteria coverage
 
@@ -71,4 +96,4 @@ Each phase ends with all checks green and a commit. **Standard checks:** backend
 | 10 Tests, migrations, Docker, README | all, 7 |
 
 ## After the MVP (not scheduled)
-Multi-agent, React Flow editor, MCP tools, RAG, HITL with checkpointer, more providers, auth/multi-tenancy, advanced memory, SDK packaging — see `ARCHITECTURE.md` §9.
+Multi-agent, React Flow editor, MCP tools, RAG, HITL with checkpointer, more providers, auth/multi-tenancy, advanced memory, SDK packaging — see `ARCHITECTURE.md` §10.

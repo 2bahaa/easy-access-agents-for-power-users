@@ -1,3 +1,9 @@
+# Development database only:   docker compose up -d db
+# Full stack (db + API + UI):   docker compose up -d --build   ->  http://localhost:3000
+#
+# Ollama is NOT containerized: it runs on the host (GPU access) and is reached via
+# host.docker.internal.
+
 services:
   db:
     image: postgres:17-alpine
@@ -7,7 +13,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
       POSTGRES_DB: ${POSTGRES_DB:-eaa}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Bound to localhost only: reachable by local dev tools, not by the network.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -15,6 +22,40 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Explicit values (not the dev .env): inside Docker the DB host is "db".
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-eaa}:${POSTGRES_PASSWORD:-change-me}@db:5432/${POSTGRES_DB:-eaa}
+      OLLAMA_BASE_URL: ${DOCKER_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      WORKSPACE_DIR: /workspace
+      MAX_TOOL_CALLS_CAP: ${MAX_TOOL_CALLS_CAP:-20}
+      RUN_TIMEOUT_CAP_S: ${RUN_TIMEOUT_CAP_S:-300}
+      TOOL_TIMEOUT_S: ${TOOL_TIMEOUT_S:-10}
+      CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-3000}
+    volumes:
+      # Read-only: the file_reader tool can never modify host files.
+      - ./workspace:/workspace:ro
+    extra_hosts:
+      # Makes host.docker.internal work on Linux too (built in on Docker Desktop).
+      - "host.docker.internal:host-gateway"
+    ports:
+      # API docs at http://localhost:8001/docs; 8001 avoids clashing with a local dev API on 8000.
+      - "127.0.0.1:${BACKEND_PORT:-8001}:8000"
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:80"
 
 volumes:
   pgdata:

@@ -187,9 +187,10 @@ async def start_run(
 ) -> ActiveRun:
     """Validate, persist the user message + run row, and start the run in the background.
     Raises domain errors (404/409/422) before anything streams."""
-    conversation = await conversation_service.get_conversation(session, conversation_id)
+    # In-memory check first: a busy conversation is rejected without touching the DB.
     if manager.has_active_run(conversation_id):
         raise ConflictError("A run is already in progress for this conversation")
+    conversation = await conversation_service.get_conversation(session, conversation_id)
 
     agent = await agent_service.get_agent(session, conversation.agent_id)
     config = to_agent_config(agent)

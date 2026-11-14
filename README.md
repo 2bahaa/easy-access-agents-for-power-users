@@ -1,93 +1,146 @@
 # Easy Access Agents for Power Users
 
-An Agent Studio for building, configuring and running your own AI agents:
-pick a model, write instructions, attach Markdown skills, allow specific tools,
+An Agent Studio for building, configuring and running your own AI agents on local
+models: pick a model, write instructions, attach Markdown skills, allow specific tools,
 and watch tokens and tool calls stream live.
 
-> Status: **Phase 6 — streaming chat done.** The MVP works end to end; Phase 7 adds full Docker packaging. See the roadmap below.
+> Status: **MVP complete** (roadmap phases 0–7). See [acceptance results](docs/IMPLEMENTATION_ROADMAP.md#mvp-acceptance-results).
 
 Design docs: [Project spec](docs/PROJECT_SPEC.md) · [Architecture](docs/ARCHITECTURE.md) ·
 [API design](docs/API_DESIGN.md) · [Implementation roadmap](docs/IMPLEMENTATION_ROADMAP.md)
 
-## Stack
+## Features
+
+- **Agent Studio** — create agents with a model, system prompt, ordered skills, permitted
+  tools (with per-agent settings) and safety limits. The model picker shows which local
+  models support tool calling.
+- **Streaming chat** — tokens stream live; tool calls appear inline; a **run timeline**
+  shows every step (arguments, results, errors, timing, tokens). Stop a run at any time.
+- **Safe tools** — a calculator (no `eval`) and a read-only file reader confined to
+  `workspace/`. Every call is permission-checked, validated, time-limited and counted.
+- **History** — conversations, messages and run timelines are stored in PostgreSQL.
 
 | Layer | Tech |
 |---|---|
-| Backend | Python 3.12, FastAPI, Pydantic, SQLAlchemy 2 (async) + Alembic |
+| Backend | Python 3.12, FastAPI, Pydantic, SQLAlchemy 2 (async), Alembic |
 | Agent runtime | LangGraph 1.x (custom `StateGraph`), `langchain-ollama` |
-| LLM | Ollama (local), behind a provider registry |
-| Database | PostgreSQL 17 (Docker) |
+| LLM | Ollama on the host, behind a provider registry |
+| Database | PostgreSQL 17 |
 | Streaming | Server-Sent Events |
-| Frontend | React, TypeScript, Vite, Tailwind CSS |
-| Tests | pytest, Vitest + React Testing Library |
+| Frontend | React 19, TypeScript, Vite, Tailwind CSS v4, TanStack Query |
+| Tests | pytest (162), Vitest + React Testing Library (84) |
 
 ## Prerequisites
 
-- Python 3.12+ and [uv](https://docs.astral.sh/uv/) (`pip install uv`, then use `uv` or `python -m uv`)
-- Node.js 22.12+ (dependencies are pinned to versions that support 22.12; `engine-strict` is on)
-- Docker Desktop (for PostgreSQL)
-- [Ollama](https://ollama.com) running locally with a **tool-capable** model (see below)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- [Ollama](https://ollama.com) running on this machine with a **tool-capable** model, e.g.
+  `ollama pull qwen3:4b` (see [Choosing a model](#choosing-an-ollama-model))
+- For local development only: Python 3.12+ with [uv](https://docs.astral.sh/uv/)
+  (`pip install uv`, then `uv` or `python -m uv`) and Node.js 22.12+
 
-## Setup
+## Quick start (Docker)
 
 ```bash
-cp .env.example .env            # adjust passwords/ports
-docker compose up -d db         # start PostgreSQL
-cd backend
-uv sync                         # create .venv and install deps
-uv run alembic upgrade head     # create/upgrade the database schema
-uv run uvicorn app.main:app --reload   # API on http://localhost:8000 (docs at /docs)
+cp .env.example .env              # then change POSTGRES_PASSWORD (and DATABASE_URL to match)
+docker compose up -d --build      # database + API + Studio
 ```
 
-> **Run backend commands from `backend/`.** `uv run` finds the project by its
-> `pyproject.toml`, which lives in `backend/`. From the repo root it falls back to
-> whatever Python is on your PATH and fails with `No module named 'app'`.
-> To start the API from the repo root instead, use:
-> `uv run --directory backend uvicorn app.main:app --reload`
+Open **http://localhost:3000**. Migrations run automatically when the backend starts.
 
-### Frontend (Agent Studio)
+| URL | What |
+|---|---|
+| http://localhost:3000 | Agent Studio (nginx; proxies `/api` to the backend) |
+| http://localhost:8001/docs | API docs (OpenAPI) |
+| `127.0.0.1:5432` | PostgreSQL |
 
-In a second terminal, with the API running on port 8000:
+All ports are bound to `127.0.0.1` only. Change them with `FRONTEND_PORT`, `BACKEND_PORT`
+and `POSTGRES_PORT` in `.env`.
+
+```bash
+docker compose logs -f backend    # follow API logs
+docker compose stop backend frontend   # stop the app, keep the database running
+docker compose down               # stop everything (data stays in the pgdata volume)
+```
+
+The containers reach Ollama on the host via `host.docker.internal:11434`. The
+`workspace/` folder is mounted **read-only** at `/workspace`; put files there for the
+file reader tool.
+
+## Local development
+
+Run the database in Docker and the API/Studio on your machine (hot reload).
+
+```bash
+docker compose up -d db
+cd backend
+uv sync
+uv run alembic upgrade head
+uv run uvicorn app.main:app --reload      # API on http://localhost:8000
+```
+
+In a second terminal:
 
 ```bash
 cd frontend
-npm install                     # first time only
-npm run dev                     # Studio on http://localhost:5173
+npm install
+npm run dev                               # Studio on http://localhost:5173
 ```
 
-The dev server proxies `/api` to `http://127.0.0.1:8000` (override with
-`VITE_PROXY_TARGET` in `frontend/.env`, see `frontend/.env.example`). It targets
-`127.0.0.1` rather than `localhost` because Node resolves `localhost` to IPv6 `::1`,
-while uvicorn listens on IPv4 — using `localhost` there results in 502 errors.
+> **Run backend commands from `backend/`.** `uv run` finds the project by its
+> `pyproject.toml` there. From the repo root, use
+> `uv run --directory backend uvicorn app.main:app --reload`.
 
-The Studio follows your OS light/dark setting.
+The Vite dev server proxies `/api` to `http://127.0.0.1:8000` (override with
+`VITE_PROXY_TARGET` in `frontend/.env`).
 
-### Using the Studio
+## Using the Studio
 
 1. **Agents → New agent**: pick a model (look for the **Tools** badge), write instructions,
    attach skills and enable tools, then **Create agent**.
 2. Click **Chat** on the agent card (or **Open chat** in the editor).
-3. Send a message. Tokens stream live; tool calls appear inline and step by step in the
-   **Run timeline** (right panel, or the activity icon on smaller screens).
-4. **Stop** cancels the run. Conversations and timelines are saved and reload after a
-   refresh or server restart. Leaving the chat page while a run is streaming cancels it.
+3. Send a message. Tool calls appear inline and step by step in the **Run timeline**
+   (right panel, or the activity icon on smaller screens).
+4. **Stop** cancels the run. Leaving the chat page while a run is streaming also cancels it.
+
+You can also drive agents over HTTP (`-N` disables curl buffering so events appear live):
+
+```bash
+curl -s -X POST localhost:8000/api/agents -H 'content-type: application/json' \
+  -d '{"name":"Math","model":"qwen3:4b","tools":[{"name":"calculator"}]}'
+curl -s -X POST localhost:8000/api/conversations -H 'content-type: application/json' \
+  -d '{"agent_id":"<agent id>"}'
+curl -N -X POST localhost:8000/api/conversations/<conversation id>/messages \
+  -H 'content-type: application/json' -d '{"content":"What is 12 * 12?"}'
+```
+
+(Use port 8001 for the Docker stack.) To run the runtime directly without the API:
+`uv run python -m scripts.run_agent_live <model> "<question>"` from `backend/`.
+
+## Configuration
+
+All settings come from environment variables (`.env`, see `.env.example`).
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `eaa` / `change-me` / `eaa` | Database credentials (Docker) |
+| `DATABASE_URL` | `postgresql+asyncpg://…@127.0.0.1:5432/eaa` | Local-dev DB connection |
+| `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama for local dev |
+| `DOCKER_OLLAMA_BASE_URL` | `http://host.docker.internal:11434` | Ollama as seen from the backend container |
+| `WORKSPACE_DIR` | `../workspace` | Root folder for the file reader (Docker: `/workspace`, read-only) |
+| `MAX_TOOL_CALLS_CAP` / `RUN_TIMEOUT_CAP_S` / `TOOL_TIMEOUT_S` | `20` / `300` / `10` | Global safety caps; agents can only set lower values |
+| `FRONTEND_PORT` / `BACKEND_PORT` | `3000` / `8001` | Host ports for the Docker stack |
 
 ## Testing
 
 ```bash
-cd backend
-uv run pytest                   # needs the db container running
-uv run ruff check . && uv run mypy app
+cd backend && uv run pytest && uv run ruff check . && uv run mypy app   # needs the db container
+cd frontend && npm run test && npm run lint && npm run typecheck && npm run build
 ```
 
-Frontend (from `frontend/`): `npm run test` (Vitest + Testing Library), `npm run lint`,
-`npm run typecheck`, `npm run build`.
-
-Backend tests use a separate database (`<db>_test`, recreated and migrated on every run;
-override with `TEST_DATABASE_URL`). Each test runs in a rolled-back transaction.
-
-Symlink-escape tests for `file_reader` are skipped on Windows unless Developer Mode
-is enabled. To run them in Linux (from `backend/`):
+Backend tests use a separate database (`<db>_test`, recreated and migrated on every run),
+a scripted fake model (no Ollama needed) and roll back every test. Symlink-escape tests
+for the file reader are skipped on Windows without Developer Mode; run them on Linux
+from `backend/`:
 
 ```bash
 docker run --rm -v "$PWD:/app:ro" -w /app -e UV_PROJECT_ENVIRONMENT=/tmp/venv \
@@ -97,55 +150,40 @@ docker run --rm -v "$PWD:/app:ro" -w /app -e UV_PROJECT_ENVIRONMENT=/tmp/venv \
 
 ## Choosing an Ollama model
 
-Agents need a model that supports **tool calling**. The runtime checks this
-automatically via Ollama's `/api/show` (`capabilities` must include `"tools"`)
-and refuses to run a tool-enabled agent on a model without it.
+Agents with tools need a model with the Ollama **tools** capability; the Studio shows a
+badge and the backend refuses tool-enabled agents on models without it. Advertised
+support is not the same as reliable behavior. Observed with `llama3.2:1b`:
 
-Advertised support is not the same as reliable behavior. Phase 0 spike results
-(`backend/scripts/spike_ollama_tools.py`, 5 trials each, temperature 0):
+| Check | Result |
+|---|---|
+| Calls the calculator correctly | yes (consistently) |
+| Uses the tool result in its final answer | often not (e.g. "406.5 … adding 4 gives 410.5") |
+| Calls tools on small talk | yes |
+| File reader calls | malformed (schema echo, wrong tool, or JSON as text) |
 
-| Model | `tools` capability | Correct tool call | Final answer uses result | Spurious tool calls on small talk | Token streaming |
-|---|---|---|---|---|---|
-| `llama3.2:1b` | yes | 5/5 | **0/5** | **5/5** | 5/5 |
+The platform handles these safely (validation errors are returned to the model and shown
+in the timeline), but for useful agents use **`qwen3:4b`** (≤ 8 GB VRAM) or **`qwen3:8b`**.
+Compare models with `uv run python scripts/spike_ollama_tools.py <model> 5` (from `backend/`).
 
-Takeaways:
-- The LangGraph + `ChatOllama` pipeline works end to end: tokens stream via
-  `stream_mode="messages"` and tool events via `stream_mode="custom"`.
-- `llama3.2:1b` calls tools but ignores their results and calls tools when not
-  needed. Fine for wiring tests; not for real use.
-- Recommended: `qwen3:8b` (or `qwen3:4b` on ≤8 GB VRAM). Re-run the spike to compare:
-  `uv run python scripts/spike_ollama_tools.py qwen3:8b 5`
+## Troubleshooting
 
-## Talking to an agent over HTTP
-
-With the API running, create an agent and a conversation, then stream a message
-(`-N` disables curl buffering so events appear live):
-
-```bash
-curl -s -X POST localhost:8000/api/agents -H 'content-type: application/json' \
-  -d '{"name":"Math","model":"llama3.2:1b","tools":[{"name":"calculator"}]}'
-curl -s -X POST localhost:8000/api/conversations -H 'content-type: application/json' \
-  -d '{"agent_id":"<agent id>"}'
-curl -N -X POST localhost:8000/api/conversations/<conversation id>/messages \
-  -H 'content-type: application/json' -d '{"content":"What is 12 * 12?"}'
-```
-
-## Running an agent from the command line
-
-You can also run the runtime directly against local Ollama, without the API (from `backend/`):
-
-```bash
-uv run python -m scripts.run_agent_live llama3.2:1b "What is 17.5 * 23 + 4?"
-```
-
-It prints every event (tool calls, results, final message, usage).
+| Symptom | Fix |
+|---|---|
+| `No module named 'app'` | Run backend commands from `backend/` (see above). |
+| `ports are not available … bind` when starting Docker | Another program uses the port, or Windows reserved it (`netsh interface ipv4 show excludedportrange protocol=tcp`). Set a different `FRONTEND_PORT` / `BACKEND_PORT` in `.env`. |
+| Studio dev server shows 502 for `/api` | Keep proxy targets on `127.0.0.1`, not `localhost` (Node resolves `localhost` to IPv6 `::1`, uvicorn listens on IPv4). |
+| Every DB request takes ~2 s on Windows | Use `127.0.0.1` instead of `localhost` in `DATABASE_URL` (the port is published on IPv4 only). |
+| Sidebar shows **Ollama: Offline** | Start Ollama. On Linux hosts, Ollama may need `OLLAMA_HOST=0.0.0.0` to accept connections from containers. |
+| First message takes a long time | Ollama loads the model into memory on first use after being idle. |
+| Agent answers wrongly despite correct tool results | Model quality; see [Choosing a model](#choosing-an-ollama-model). |
 
 ## Project layout
 
 ```
-backend/     FastAPI app, agent runtime, tools, skills, migrations, tests
-frontend/    React Agent Studio (Vite, TypeScript, Tailwind)
-workspace/   Sandbox folder — the only place the file_reader tool can read
+backend/     FastAPI app, agent runtime, tools, skills, migrations, tests, Dockerfile
+frontend/    React Agent Studio, nginx config, Dockerfile
+workspace/   Sandbox folder: the only place the file reader can read (read-only in Docker)
+docs/        Spec, architecture, API design, roadmap
 ```
 
 ## Roadmap
@@ -157,4 +195,7 @@ workspace/   Sandbox folder — the only place the file_reader tool can read
 4. ✅ Conversations & SSE streaming
 5. ✅ Frontend Studio — agent builder, skills, tool picker
 6. ✅ Frontend Chat — streaming chat + run timeline
-7. Docker & docs
+7. ✅ Docker & docs
+
+Next (post-MVP, see `docs/ARCHITECTURE.md` §10): more providers, MCP tools, RAG,
+human-in-the-loop, multi-agent, visual workflow editor, auth, SDK packaging.
