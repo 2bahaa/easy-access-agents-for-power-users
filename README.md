@@ -4,7 +4,7 @@ An Agent Studio for building, configuring and running your own AI agents:
 pick a model, write instructions, attach Markdown skills, allow specific tools,
 and watch tokens and tool calls stream live.
 
-> Status: **Phase 2 — tools done.** See the roadmap below.
+> Status: **Phase 3 — agent runtime done.** See the roadmap below.
 
 Design docs: [Project spec](docs/PROJECT_SPEC.md) · [Architecture](docs/ARCHITECTURE.md) ·
 [API design](docs/API_DESIGN.md) · [Implementation roadmap](docs/IMPLEMENTATION_ROADMAP.md)
@@ -78,6 +78,16 @@ Takeaways:
 - Recommended: `qwen3:8b` (or `qwen3:4b` on ≤8 GB VRAM). Re-run the spike to compare:
   `uv run python scripts/spike_ollama_tools.py qwen3:8b 5`
 
+## Running an agent from the command line
+
+Until the UI exists, you can run the real runtime against local Ollama (from `backend/`):
+
+```bash
+uv run python -m scripts.run_agent_live llama3.2:1b "What is 17.5 * 23 + 4?"
+```
+
+It prints every event (tool calls, results, final message, usage).
+
 ## Project layout
 
 ```
@@ -91,7 +101,7 @@ workspace/   Sandbox folder — the only place the file_reader tool can read
 0. ✅ Scaffold & Ollama tool-calling spike
 1. ✅ Backend foundation — config, DB, migrations, agents + skills CRUD
 2. ✅ Tools — registry, calculator, sandboxed file reader
-3. Runtime — provider registry, LangGraph loop, limits, events
+3. ✅ Runtime — provider registry, LangGraph loop, limits, events
 4. Conversations & SSE streaming
 5. Frontend Studio — agent builder, skills, tool picker
 6. Frontend Chat — streaming chat + run timeline

@@ -51,12 +51,12 @@ Verified versions (Phase 0): Python 3.12, LangGraph 1.2.22, langchain-core 1.8, 
 | `schemas/` | Pydantic request/response models |
 | `services/` | Use cases: agent/skill CRUD with validation, conversation management, run orchestration (build `AgentConfig`, persist messages/events/status) |
 | `db/` | SQLAlchemy models and async engine/session factory. Services query via the session directly; a repository layer is added only if query logic starts to repeat |
-| `runtime/providers/` | Provider registry; Ollama factory; capability lookup (`/api/show`) |
+| `runtime/providers/` | `Provider` protocol (list models, capabilities, build chat model, classify provider errors), registry, Ollama implementation |
 | `runtime/graph.py`, `state.py` | LangGraph `StateGraph` definition and state |
 | `runtime/tool_node.py` | Authorize → limit-check → validate → execute with timeout → emit events |
 | `runtime/events.py` | `AgentEvent` discriminated union |
 | `runtime/limits.py` | Effective limits = min(agent setting, global cap) |
-| `runtime/executor.py` | `run_agent(config, history) -> AsyncIterator[AgentEvent]` |
+| `runtime/executor.py` | `AgentRun(request, provider, tools, caps, ctx)`: `stream()` yields `AgentEvent`s, `cancel()`, then `result` (status, tool_call_count, usage, new messages) |
 | `tools/` | `Tool` base, registry, `calculator`, `file_reader` |
 | `skills/` | Markdown/frontmatter loader, system-prompt composition |
 
@@ -137,6 +137,10 @@ Tools are not stored as rows; the catalog comes from the code registry. Deleting
 8. Client disconnect or `POST /runs/{id}/cancel` cancels the run task → status `cancelled`.
 
 ## 8. Streaming design
+
+The graph runs in a producer task that feeds a queue; `AgentRun.stream()` reads the queue. The run timeout and cancellation therefore apply only to agent work, never to the consumer's code, and an early consumer exit (client disconnect) cancels the run. Graph streaming uses `stream_mode=["messages", "custom", "updates"]` (`version="v2"`): `messages` → token deltas, `custom` → tool events from the tool node's stream writer, `updates` → completed messages, usage and tool-call counts.
+
+When `max_tool_calls` is reached, pending tool calls still receive an error `ToolMessage` so stored history remains well-formed, then the run ends with `limit_exceeded`.
 
 The runtime yields `AgentEvent` objects (Pydantic discriminated union in `runtime/events.py`). The run service fans them out to (a) the SSE response and (b) a persister that writes every non-delta event to `run_events`. The event protocol is specified in `API_DESIGN.md` §4. Because the runtime is transport-agnostic, WebSockets, a CLI or the future SDK can consume the same stream.
 

@@ -57,6 +57,8 @@ Base path: `/api`. JSON over HTTP except the run stream (SSE). Request/response 
   "run_timeout_s": 120
 }
 ```
+Save-time checks: unknown tool / invalid tool config / unknown provider / limits above caps → 422. If the agent has tools and the provider reports the model **lacks** tool support → 409. If capability is unknown (provider offline, model not pulled yet) the save is allowed; the run pre-flight check enforces it.
+
 `Agent` = `AgentWrite` fields (with `skills` expanded to `{id, slug, name}` in order) + `id`, `created_at`, `updated_at`.
 
 ### Skills

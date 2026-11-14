@@ -10,9 +10,11 @@ from sqlalchemy.orm import raiseload
 
 from app.config import Settings
 from app.db.models import Agent, AgentSkill, AgentTool, Skill
+from app.runtime.providers.base import ProviderError
+from app.runtime.providers.registry import ProviderRegistry, UnknownProviderError
 from app.schemas.agents import AgentRead, AgentWrite, ModelParams, ToolSelection
 from app.schemas.skills import SkillRef
-from app.services.errors import DomainValidationError, NotFoundError
+from app.services.errors import ConflictError, DomainValidationError, NotFoundError
 from app.tools.registry import ToolConfigError, ToolRegistry, UnknownToolError
 
 
@@ -84,6 +86,26 @@ def _validate_tools(data: AgentWrite, registry: ToolRegistry) -> dict[str, dict[
     return configs
 
 
+async def _check_provider_and_model(data: AgentWrite, providers: ProviderRegistry) -> None:
+    try:
+        provider = providers.get(data.provider)
+    except UnknownProviderError:
+        raise DomainValidationError(f"Unknown provider: '{data.provider}'") from None
+    if not data.tools:
+        return
+    try:
+        caps = await provider.get_capabilities(data.model)
+    except ProviderError:
+        # Provider offline or model not pulled yet: allow saving; the run pre-flight
+        # check enforces tool support before any execution.
+        return
+    if not caps.supports_tools:
+        raise ConflictError(
+            f"Model '{data.model}' does not support tool calling; remove the tools "
+            "or choose a tool-capable model"
+        )
+
+
 def _apply(
     agent: Agent,
     data: AgentWrite,
@@ -119,10 +141,15 @@ def _apply(
 
 
 async def create_agent(
-    session: AsyncSession, data: AgentWrite, settings: Settings, registry: ToolRegistry
+    session: AsyncSession,
+    data: AgentWrite,
+    settings: Settings,
+    registry: ToolRegistry,
+    providers: ProviderRegistry,
 ) -> Agent:
     _check_limits(data, settings)
     tool_configs = _validate_tools(data, registry)
+    await _check_provider_and_model(data, providers)
     skills = await _resolve_skills(session, data.skill_ids)
     agent = Agent(skill_links=[], tool_links=[])
     _apply(agent, data, skills, tool_configs)
@@ -137,10 +164,12 @@ async def update_agent(
     data: AgentWrite,
     settings: Settings,
     registry: ToolRegistry,
+    providers: ProviderRegistry,
 ) -> Agent:
     agent = await get_agent(session, agent_id)
     _check_limits(data, settings)
     tool_configs = _validate_tools(data, registry)
+    await _check_provider_and_model(data, providers)
     skills = await _resolve_skills(session, data.skill_ids)
     _apply(agent, data, skills, tool_configs)
     agent.updated_at = func.now()

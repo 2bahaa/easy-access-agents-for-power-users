@@ -21,6 +21,8 @@ from alembic import command
 from app.api.deps import get_session
 from app.config import BACKEND_DIR, Settings, get_settings
 from app.main import create_app
+from app.runtime.providers.registry import ProviderRegistry
+from tests.fakes import FakeProvider
 
 
 def _test_database_url() -> str:
@@ -88,8 +90,15 @@ async def session(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
 
 
 @pytest.fixture
-async def client(settings: Settings, session: AsyncSession) -> AsyncIterator[AsyncClient]:
-    app = create_app(settings)
+def fake_provider() -> FakeProvider:
+    return FakeProvider(no_tool_models={"plain:1b"})
+
+
+@pytest.fixture
+async def client(
+    settings: Settings, session: AsyncSession, fake_provider: FakeProvider
+) -> AsyncIterator[AsyncClient]:
+    app = create_app(settings, provider_registry=ProviderRegistry([fake_provider]))
 
     async def _session_override() -> AsyncIterator[AsyncSession]:
         yield session

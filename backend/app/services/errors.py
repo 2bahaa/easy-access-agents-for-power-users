@@ -23,3 +23,8 @@ class ConflictError(DomainError):
 class DomainValidationError(DomainError):
     status_code = 422
     title = "Validation error"
+
+
+class ProviderUnavailableError(DomainError):
+    status_code = 502
+    title = "Provider unavailable"

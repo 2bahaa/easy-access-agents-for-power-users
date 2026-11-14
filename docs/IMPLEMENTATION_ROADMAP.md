@@ -25,12 +25,12 @@ Each phase ends with all checks green and a commit. **Standard checks:** backend
 
 **Done when:** unit tests cover valid and malicious calculator input (e.g. `__import__`, names, attribute access, huge powers) and file_reader rejection cases (traversal, absolute path, symlink escape, oversized, binary, subdir escape) — AC 5 at unit level; unknown tool / bad config return 422. ✅ (95 tests; symlink-escape tests run on Linux — they skip on Windows without Developer Mode.)
 
-## Phase 3 — Agent runtime
+## Phase 3 — Agent runtime ✅ (done)
 - Provider registry + Ollama factory; capability lookup via `/api/show`; `GET /providers`, `GET /providers/{provider}/models`.
 - Skill prompt composition.
 - `AgentEvent` union; LangGraph `StateGraph` (`agent` ⇄ `tools`); tool node (permission → limit → validation → timeout → events); effective limits; run timeout; `run_agent()` async generator.
 
-**Done when:** runtime tests with a scripted fake chat model prove: tokens → `message.delta`; tool call → started/completed events and `ToolMessage`; validation/permission/timeout failures returned to the model; `max_tool_calls` → `limit_exceeded`; run timeout → `timeout`; unpermitted tool never bound (AC 6, AC 7); skills appear in the system prompt (AC 2); model without `tools` capability → `model_no_tool_support` (AC 9). Optional manual check against live Ollama.
+**Done when:** runtime tests with a scripted fake chat model prove: tokens → `message.delta`; tool call → started/completed events and `ToolMessage`; validation/permission/timeout failures returned to the model; `max_tool_calls` → `limit_exceeded`; run timeout → `timeout`; unpermitted tool never bound (AC 6, AC 7); skills appear in the system prompt (AC 2); model without `tools` capability → `model_no_tool_support` (AC 9). Optional manual check against live Ollama. ✅ (133 tests; live check via `scripts/run_agent_live.py` confirmed streaming, tool events and validation recovery with `llama3.2:1b`.)
 
 ## Phase 4 — Conversations & streaming
 - Conversation CRUD; run service (snapshot, persistence of messages, run events, status, usage).

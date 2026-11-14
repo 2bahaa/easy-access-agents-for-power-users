@@ -5,6 +5,7 @@ from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
+from app.runtime.providers.registry import ProviderRegistry
 from app.tools.registry import ToolRegistry
 
 
@@ -24,6 +25,12 @@ def get_tool_registry(request: Request) -> ToolRegistry:
     return registry
 
 
+def get_provider_registry(request: Request) -> ProviderRegistry:
+    registry: ProviderRegistry = request.app.state.provider_registry
+    return registry
+
+
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 SettingsDep = Annotated[Settings, Depends(get_app_settings)]
 ToolRegistryDep = Annotated[ToolRegistry, Depends(get_tool_registry)]
+ProviderRegistryDep = Annotated[ProviderRegistry, Depends(get_provider_registry)]
