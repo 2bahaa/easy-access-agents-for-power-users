@@ -86,18 +86,18 @@ Save-time checks: unknown tool / invalid tool config / unknown provider / limits
 |---|---|---|---|
 | GET | `/conversations?agent_id=` | — | `ConversationSummary[]` |
 | POST | `/conversations` | `{agent_id, title?}` | `Conversation` (201) |
-| GET | `/conversations/{id}` | — | `Conversation` with `messages[]` (ordered by `seq`) |
+| GET | `/conversations/{id}` | — | `Conversation` with `messages[]` (ordered by `seq`) and `runs[]` (ordered by start) |
 | DELETE | `/conversations/{id}` | — | 204 |
 | POST | `/conversations/{id}/messages` | `{content}` | **SSE stream** (§4) |
 
-The POST-messages endpoint persists the user message, creates a run and streams its events. Validation and pre-flight errors that occur before the stream starts return normal HTTP errors (404/422); errors after the stream starts are delivered as `run.failed`.
+The POST-messages endpoint persists the user message, creates a run and streams its events. Errors before the stream starts return normal HTTP errors: 404 unknown conversation, 422 invalid body, **409 if a run is already active in this conversation**. Errors after the stream starts are delivered as `run.failed`. The first message sets the conversation title (first line, max 60 chars) if it still has the default title. Closing the connection cancels the run.
 
 ### Runs
 | Method | Path | Response |
 |---|---|---|
 | GET | `/runs/{id}` | `Run`: `{id, conversation_id, agent_id, status, tool_call_count, usage, error, started_at, finished_at}` |
 | GET | `/runs/{id}/events` | Persisted `RunEvent[]` (timeline replay; no token deltas) |
-| POST | `/runs/{id}/cancel` | 202; the run ends with `run.cancelled` |
+| POST | `/runs/{id}/cancel` | 202; the run ends with `run.cancelled`. 409 if the run is not active, 404 if unknown |
 
 ## 4. Streaming event protocol (SSE)
 

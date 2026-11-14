@@ -4,7 +4,7 @@ An Agent Studio for building, configuring and running your own AI agents:
 pick a model, write instructions, attach Markdown skills, allow specific tools,
 and watch tokens and tool calls stream live.
 
-> Status: **Phase 3 — agent runtime done.** See the roadmap below.
+> Status: **Phase 4 — conversations & streaming done (backend MVP complete).** See the roadmap below.
 
 Design docs: [Project spec](docs/PROJECT_SPEC.md) · [Architecture](docs/ARCHITECTURE.md) ·
 [API design](docs/API_DESIGN.md) · [Implementation roadmap](docs/IMPLEMENTATION_ROADMAP.md)
@@ -54,7 +54,9 @@ Symlink-escape tests for `file_reader` are skipped on Windows unless Developer M
 is enabled. To run them in Linux (from `backend/`):
 
 ```bash
-docker run --rm -v "$PWD:/app:ro" -w /app -e UV_PROJECT_ENVIRONMENT=/tmp/venv   ghcr.io/astral-sh/uv:python3.12-bookworm-slim   sh -c "uv sync --frozen -q && uv run --frozen pytest -q -p no:cacheprovider tests/unit"
+docker run --rm -v "$PWD:/app:ro" -w /app -e UV_PROJECT_ENVIRONMENT=/tmp/venv \
+  ghcr.io/astral-sh/uv:python3.12-bookworm-slim \
+  sh -c "uv sync --frozen -q && uv run --frozen pytest -q -p no:cacheprovider tests/unit"
 ```
 
 ## Choosing an Ollama model
@@ -78,9 +80,23 @@ Takeaways:
 - Recommended: `qwen3:8b` (or `qwen3:4b` on ≤8 GB VRAM). Re-run the spike to compare:
   `uv run python scripts/spike_ollama_tools.py qwen3:8b 5`
 
+## Talking to an agent over HTTP
+
+With the API running, create an agent and a conversation, then stream a message
+(`-N` disables curl buffering so events appear live):
+
+```bash
+curl -s -X POST localhost:8000/api/agents -H 'content-type: application/json' \
+  -d '{"name":"Math","model":"llama3.2:1b","tools":[{"name":"calculator"}]}'
+curl -s -X POST localhost:8000/api/conversations -H 'content-type: application/json' \
+  -d '{"agent_id":"<agent id>"}'
+curl -N -X POST localhost:8000/api/conversations/<conversation id>/messages \
+  -H 'content-type: application/json' -d '{"content":"What is 12 * 12?"}'
+```
+
 ## Running an agent from the command line
 
-Until the UI exists, you can run the real runtime against local Ollama (from `backend/`):
+You can also run the runtime directly against local Ollama, without the API (from `backend/`):
 
 ```bash
 uv run python -m scripts.run_agent_live llama3.2:1b "What is 17.5 * 23 + 4?"
@@ -102,7 +118,7 @@ workspace/   Sandbox folder — the only place the file_reader tool can read
 1. ✅ Backend foundation — config, DB, migrations, agents + skills CRUD
 2. ✅ Tools — registry, calculator, sandboxed file reader
 3. ✅ Runtime — provider registry, LangGraph loop, limits, events
-4. Conversations & SSE streaming
+4. ✅ Conversations & SSE streaming
 5. Frontend Studio — agent builder, skills, tool picker
 6. Frontend Chat — streaming chat + run timeline
 7. Docker & docs

@@ -31,7 +31,7 @@ React (Vite)  ── REST (JSON) ──►  FastAPI  api/  (routers, schemas, SS
 | Orchestration | LangGraph 1.x custom `StateGraph` (`agent` ⇄ `tools`) | Our own tool node enforces permissions, validation, limits, timeouts and emits events; LangGraph enables subgraphs/HITL later |
 | LLM | `langchain-ollama` `ChatOllama` via a provider registry | Thin seam: new provider = one factory |
 | Persistence | PostgreSQL 17, SQLAlchemy 2 async + asyncpg, Alembic | Our tables are the only history; no LangGraph checkpointer in MVP |
-| Streaming | SSE via `sse-starlette`; frontend `fetch` + small SSE parser | One POST per turn streams its run; no job queue needed |
+| Streaming | SSE: `StreamingResponse` + FastAPI's built-in SSE frame formatter (`fastapi.sse`), own 15 s keep-alive; frontend `fetch` + small SSE parser | One POST per turn streams its run; no extra dependency or job queue |
 | Frontend | React, TypeScript, Vite, Tailwind CSS v4, React Router, TanStack Query | Standard and minimal |
 | Tooling | uv, ruff, mypy, pytest, pytest-asyncio, httpx; Vitest, React Testing Library | |
 | Containers | Docker Compose: Postgres now, backend/frontend in Phase 7; Ollama on host | GPU passthrough on Windows is impractical |
@@ -46,10 +46,11 @@ Verified versions (Phase 0): Python 3.12, LangGraph 1.2.22, langchain-core 1.8, 
 | `main.py` | App factory, lifespan (DB engine, registries, skill seeding), CORS, router mounting |
 | `config.py` | `Settings` from environment: DB URL, Ollama URL, `WORKSPACE_DIR`, global caps |
 | `api/routers/` | HTTP endpoints only: parse/validate, call a service, map results/errors |
-| `api/sse.py` | Serialize `AgentEvent`s to SSE frames, keep-alives, disconnect → cancel |
+| `api/sse.py` | Serialize `AgentEvent`s to SSE frames, keep-alives; client disconnect → `RunManager.cancel()` |
 | `api/errors.py` | Domain exceptions → problem-JSON responses |
 | `schemas/` | Pydantic request/response models |
-| `services/` | Use cases: agent/skill CRUD with validation, conversation management, run orchestration (build `AgentConfig`, persist messages/events/status) |
+| `services/` | Use cases: agent/skill CRUD with validation, conversation management, run orchestration (`run_service`: build `AgentConfig` snapshot, persist user message/run, `DbRunRecorder` for events and results) |
+| `services/run_manager.py` | In-process registry of active runs. Each run is driven by a background task that persists events and the final result independently of the HTTP connection; SSE responses subscribe via a queue; cancel is synchronous |
 | `db/` | SQLAlchemy models and async engine/session factory. Services query via the session directly; a repository layer is added only if query logic starts to repeat |
 | `runtime/providers/` | `Provider` protocol (list models, capabilities, build chat model, classify provider errors), registry, Ollama implementation |
 | `runtime/graph.py`, `state.py` | LangGraph `StateGraph` definition and state |
@@ -142,7 +143,9 @@ The graph runs in a producer task that feeds a queue; `AgentRun.stream()` reads 
 
 When `max_tool_calls` is reached, pending tool calls still receive an error `ToolMessage` so stored history remains well-formed, then the run ends with `limit_exceeded`.
 
-The runtime yields `AgentEvent` objects (Pydantic discriminated union in `runtime/events.py`). The run service fans them out to (a) the SSE response and (b) a persister that writes every non-delta event to `run_events`. The event protocol is specified in `API_DESIGN.md` §4. Because the runtime is transport-agnostic, WebSockets, a CLI or the future SDK can consume the same stream.
+The runtime yields `AgentEvent` objects (Pydantic discriminated union in `runtime/events.py`). The run's background task (owned by `RunManager`) writes every non-delta event to `run_events` as it happens, forwards all events to the SSE subscriber, and on completion stores the new messages and final run status. Unanswered tool calls (e.g. after a cancel) get an error tool message so the stored history stays valid. On startup, runs left `running` by a previous process are marked `failed`.
+
+**Single-process limitation:** active runs live in one process's memory, so cancel and the one-run-per-conversation guard assume a single backend worker. Multiple workers would need a shared run registry (e.g. Postgres `LISTEN/NOTIFY` or Redis) — deferred until deployment requires it. The event protocol is specified in `API_DESIGN.md` §4. Because the runtime is transport-agnostic, WebSockets, a CLI or the future SDK can consume the same stream.
 
 ## 9. Extension points (postponed features)
 

@@ -9,10 +9,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.api.errors import register_error_handlers
-from app.api.routers import agents, health, providers, skills, tools
+from app.api.routers import agents, conversations, health, providers, runs, skills, tools
 from app.config import Settings, get_settings
 from app.db.session import create_engine, create_sessionmaker
 from app.runtime.providers.registry import ProviderRegistry, build_default_providers
+from app.services.run_manager import RunManager
+from app.services.run_service import mark_interrupted_runs
 from app.services.skill_service import seed_builtin_skills
 from app.tools.registry import ToolRegistry, build_default_registry
 
@@ -35,10 +37,13 @@ def create_app(
         try:
             async with app.state.sessionmaker() as session:
                 await seed_builtin_skills(session, settings.skills_dir)
+                if interrupted := await mark_interrupted_runs(session):
+                    logger.warning("Marked %d interrupted run(s) as failed", interrupted)
         except Exception:
             # Keep serving so /api/health can report the problem.
-            logger.exception("Skill seeding failed (is the database migrated?)")
+            logger.exception("Startup DB tasks failed (is the database migrated?)")
         yield
+        await app.state.run_manager.shutdown()
         await engine.dispose()
 
     app = FastAPI(title="Easy Access Agents", version=__version__, lifespan=lifespan)
@@ -47,6 +52,7 @@ def create_app(
     app.state.provider_registry = provider_registry or build_default_providers(
         settings.ollama_base_url
     )
+    app.state.run_manager = RunManager()
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
@@ -54,8 +60,8 @@ def create_app(
         allow_headers=["*"],
     )
     register_error_handlers(app)
-    for router in (health.router, agents.router, skills.router, tools.router, providers.router):
-        app.include_router(router, prefix="/api")
+    for module in (health, agents, skills, tools, providers, conversations, runs):
+        app.include_router(module.router, prefix="/api")
     return app
 
 

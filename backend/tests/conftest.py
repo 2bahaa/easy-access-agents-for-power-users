@@ -8,17 +8,19 @@ migrations. Each test runs inside a transaction that is rolled back afterwards.
 import asyncio
 import os
 from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
 from alembic.config import Config
+from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import make_url, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from alembic import command
-from app.api.deps import get_session
+from app.api.deps import get_session, get_session_factory
 from app.config import BACKEND_DIR, Settings, get_settings
 from app.main import create_app
 from app.runtime.providers.registry import ProviderRegistry
@@ -95,14 +97,25 @@ def fake_provider() -> FakeProvider:
 
 
 @pytest.fixture
-async def client(
-    settings: Settings, session: AsyncSession, fake_provider: FakeProvider
-) -> AsyncIterator[AsyncClient]:
-    app = create_app(settings, provider_registry=ProviderRegistry([fake_provider]))
+def app(settings: Settings, session: AsyncSession, fake_provider: FakeProvider) -> FastAPI:
+    """App wired to the test transaction and the fake provider. Background run persistence
+    uses the same session, so everything is rolled back after the test."""
+    application = create_app(settings, provider_registry=ProviderRegistry([fake_provider]))
 
     async def _session_override() -> AsyncIterator[AsyncSession]:
         yield session
 
-    app.dependency_overrides[get_session] = _session_override
+    @asynccontextmanager
+    async def _shared_session() -> AsyncIterator[AsyncSession]:
+        yield session
+
+    application.dependency_overrides[get_session] = _session_override
+    application.dependency_overrides[get_session_factory] = lambda: _shared_session
+    return application
+
+
+@pytest.fixture
+async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
+    await app.state.run_manager.shutdown()

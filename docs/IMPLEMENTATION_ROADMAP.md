@@ -32,11 +32,11 @@ Each phase ends with all checks green and a commit. **Standard checks:** backend
 
 **Done when:** runtime tests with a scripted fake chat model prove: tokens → `message.delta`; tool call → started/completed events and `ToolMessage`; validation/permission/timeout failures returned to the model; `max_tool_calls` → `limit_exceeded`; run timeout → `timeout`; unpermitted tool never bound (AC 6, AC 7); skills appear in the system prompt (AC 2); model without `tools` capability → `model_no_tool_support` (AC 9). Optional manual check against live Ollama. ✅ (133 tests; live check via `scripts/run_agent_live.py` confirmed streaming, tool events and validation recovery with `llama3.2:1b`.)
 
-## Phase 4 — Conversations & streaming
+## Phase 4 — Conversations & streaming ✅ (done)
 - Conversation CRUD; run service (snapshot, persistence of messages, run events, status, usage).
-- `POST /conversations/{id}/messages` SSE endpoint (`sse-starlette`), keep-alives, disconnect → cancel; `GET /runs/{id}`, `GET /runs/{id}/events`, `POST /runs/{id}/cancel`.
+- `POST /conversations/{id}/messages` SSE endpoint (FastAPI SSE formatter), keep-alives, disconnect → cancel; `GET /runs/{id}`, `GET /runs/{id}/events`, `POST /runs/{id}/cancel`.
 
-**Done when:** integration tests over the SSE stream (fake model injected via the provider registry) verify event order, single terminal event, persisted messages and events, history included on the next turn, cancellation; data survives app restart (AC 8, backend part).
+**Done when:** integration tests over the SSE stream (fake model injected via the provider registry) verify event order, single terminal event, persisted messages and events, history included on the next turn, cancellation; data survives app restart (AC 8, backend part). ✅ (153 tests; live uvicorn + Ollama check incl. real client disconnect → `cancelled`.)
 
 ## Phase 5 — Frontend Studio
 - Vite + React + TS + Tailwind scaffold, React Router, TanStack Query, API client and types.

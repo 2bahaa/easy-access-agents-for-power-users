@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
 from app.runtime.providers.registry import ProviderRegistry
+from app.services.run_manager import RunManager
+from app.services.run_service import SessionFactory
 from app.tools.registry import ToolRegistry
 
 
@@ -30,7 +32,20 @@ def get_provider_registry(request: Request) -> ProviderRegistry:
     return registry
 
 
+def get_session_factory(request: Request) -> SessionFactory:
+    """For work that outlives the request (background run persistence)."""
+    factory: SessionFactory = request.app.state.sessionmaker
+    return factory
+
+
+def get_run_manager(request: Request) -> RunManager:
+    manager: RunManager = request.app.state.run_manager
+    return manager
+
+
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 SettingsDep = Annotated[Settings, Depends(get_app_settings)]
 ToolRegistryDep = Annotated[ToolRegistry, Depends(get_tool_registry)]
 ProviderRegistryDep = Annotated[ProviderRegistry, Depends(get_provider_registry)]
+SessionFactoryDep = Annotated[SessionFactory, Depends(get_session_factory)]
+RunManagerDep = Annotated[RunManager, Depends(get_run_manager)]
