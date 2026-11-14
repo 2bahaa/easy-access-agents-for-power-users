@@ -4,7 +4,7 @@ An Agent Studio for building, configuring and running your own AI agents:
 pick a model, write instructions, attach Markdown skills, allow specific tools,
 and watch tokens and tool calls stream live.
 
-> Status: **Phase 0 — scaffold & spike.** See the roadmap below.
+> Status: **Phase 1 — backend foundation done.** See the roadmap below.
 
 Design docs: [Project spec](docs/PROJECT_SPEC.md) · [Architecture](docs/ARCHITECTURE.md) ·
 [API design](docs/API_DESIGN.md) · [Implementation roadmap](docs/IMPLEMENTATION_ROADMAP.md)
@@ -35,9 +35,20 @@ cp .env.example .env            # adjust passwords/ports
 docker compose up -d db         # start PostgreSQL
 cd backend
 uv sync                         # create .venv and install deps
-uv run pytest                   # run tests
+uv run alembic upgrade head     # create/upgrade the database schema
+uv run uvicorn app.main:app --reload   # API on http://localhost:8000 (docs at /docs)
+```
+
+## Testing
+
+```bash
+cd backend
+uv run pytest                   # needs the db container running
 uv run ruff check . && uv run mypy app
 ```
+
+Tests use a separate database (`<db>_test`, recreated and migrated on every run;
+override with `TEST_DATABASE_URL`). Each test runs in a rolled-back transaction.
 
 ## Choosing an Ollama model
 
@@ -71,7 +82,7 @@ workspace/   Sandbox folder — the only place the file_reader tool can read
 ## Roadmap
 
 0. ✅ Scaffold & Ollama tool-calling spike
-1. Backend foundation — config, DB, migrations, agents + skills CRUD
+1. ✅ Backend foundation — config, DB, migrations, agents + skills CRUD
 2. Tools — registry, calculator, sandboxed file reader
 3. Runtime — provider registry, LangGraph loop, limits, events
 4. Conversations & SSE streaming

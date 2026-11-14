@@ -50,7 +50,7 @@ Verified versions (Phase 0): Python 3.12, LangGraph 1.2.22, langchain-core 1.8, 
 | `api/errors.py` | Domain exceptions → problem-JSON responses |
 | `schemas/` | Pydantic request/response models |
 | `services/` | Use cases: agent/skill CRUD with validation, conversation management, run orchestration (build `AgentConfig`, persist messages/events/status) |
-| `db/` | SQLAlchemy models, async session, repositories |
+| `db/` | SQLAlchemy models and async engine/session factory. Services query via the session directly; a repository layer is added only if query logic starts to repeat |
 | `runtime/providers/` | Provider registry; Ollama factory; capability lookup (`/api/show`) |
 | `runtime/graph.py`, `state.py` | LangGraph `StateGraph` definition and state |
 | `runtime/tool_node.py` | Authorize → limit-check → validate → execute with timeout → emit events |
@@ -81,7 +81,7 @@ easy-access-agents/
 │  │  ├─ main.py  config.py
 │  │  ├─ api/  deps.py  errors.py  sse.py  routers/
 │  │  ├─ schemas/  services/
-│  │  ├─ db/  session.py  models.py  repositories/
+│  │  ├─ db/  session.py  models.py
 │  │  ├─ runtime/  graph.py  state.py  events.py  limits.py  executor.py  tool_node.py  providers/
 │  │  ├─ tools/  base.py  registry.py  calculator.py  file_reader.py
 │  │  └─ skills/  loader.py  prompt.py

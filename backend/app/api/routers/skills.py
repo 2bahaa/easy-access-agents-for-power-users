@@ -1,0 +1,34 @@
+import uuid
+
+from fastapi import APIRouter, status
+
+from app.api.deps import SessionDep
+from app.schemas.skills import SkillRead, SkillSummary, SkillWrite
+from app.services import skill_service
+
+router = APIRouter(prefix="/skills", tags=["skills"])
+
+
+@router.get("")
+async def list_skills(session: SessionDep) -> list[SkillSummary]:
+    return [SkillSummary.model_validate(s) for s in await skill_service.list_skills(session)]
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
+async def create_skill(data: SkillWrite, session: SessionDep) -> SkillRead:
+    return SkillRead.model_validate(await skill_service.create_skill(session, data))
+
+
+@router.get("/{skill_id}")
+async def get_skill(skill_id: uuid.UUID, session: SessionDep) -> SkillRead:
+    return SkillRead.model_validate(await skill_service.get_skill(session, skill_id))
+
+
+@router.put("/{skill_id}")
+async def update_skill(skill_id: uuid.UUID, data: SkillWrite, session: SessionDep) -> SkillRead:
+    return SkillRead.model_validate(await skill_service.update_skill(session, skill_id, data))
+
+
+@router.delete("/{skill_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_skill(skill_id: uuid.UUID, session: SessionDep) -> None:
+    await skill_service.delete_skill(session, skill_id)

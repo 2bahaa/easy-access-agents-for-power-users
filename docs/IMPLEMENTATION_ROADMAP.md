@@ -8,14 +8,14 @@ Each phase ends with all checks green and a commit. **Standard checks:** backend
 
 **Done when:** checks pass; spike results recorded in `README.md`. ✅ (`llama3.2:1b`: pipeline works, model quality insufficient for real use.)
 
-## Phase 1 — Backend foundation
+## Phase 1 — Backend foundation ✅ (done)
 - `config.py` (pydantic-settings), async DB session, SQLAlchemy models for all tables in `ARCHITECTURE.md` §5, initial Alembic migration.
 - App factory, CORS, problem-JSON error handling, `GET /health`.
 - Skills CRUD + seeding from `backend/skills/*.md` (one example built-in skill).
 - Agents CRUD with `skill_ids`; `tools` field stored but validated in Phase 2; limits capped by global settings.
 - Test infrastructure: Postgres test database, transactional fixtures, httpx `AsyncClient`.
 
-**Done when:** `alembic upgrade head` on an empty DB and `downgrade base` both work; CRUD integration tests for agents and skills pass (create, read, update, delete, 404, 422, duplicate slug 409).
+**Done when:** `alembic upgrade head` on an empty DB and `downgrade base` both work; CRUD integration tests for agents and skills pass (create, read, update, delete, 404, 422, duplicate slug 409). ✅ (27 tests; migration round trip is an automated test.)
 
 ## Phase 2 — Tools
 - `Tool` base (Args/Config Pydantic models, timeout, async `run`), tool registry, `GET /tools`.
