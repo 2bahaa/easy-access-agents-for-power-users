@@ -1,0 +1,46 @@
+[project]
+name = "easy-access-agents"
+version = "0.1.0"
+description = "Agent Studio backend: FastAPI + LangGraph runtime"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "langchain-ollama>=1.1.0",
+    "langgraph>=1.2.22",
+    "pydantic>=2.14.3",
+    "pydantic-settings>=2.16.3",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.4.1",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.5.0",
+    "ruff>=0.17.5",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC", "S"]
+ignore = ["S101"]  # assert is fine in tests
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*" = ["S"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+exclude = ["scripts/", "alembic/"]
+
+[[tool.mypy.overrides]]
+module = ["langchain_ollama.*", "langgraph.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+testpaths = ["tests"]
+pythonpath = ["."]

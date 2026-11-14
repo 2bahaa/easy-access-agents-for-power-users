@@ -1,0 +1,3 @@
+Sample file for the file_reader tool.
+Project codename: Easy Access Agents.
+The answer to the demo question is 42.
