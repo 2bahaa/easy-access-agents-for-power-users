@@ -1,0 +1,4 @@
+# Normalize line endings: LF in the repo and working tree, except Windows scripts.
+* text=auto eol=lf
+*.{ps1,bat,cmd} text eol=crlf
+*.{png,jpg,jpeg,gif,ico,webp,woff,woff2} binary
