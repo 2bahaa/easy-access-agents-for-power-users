@@ -163,6 +163,23 @@ support is not the same as reliable behavior. Observed with `llama3.2:1b`:
 
 The platform handles these safely (validation errors are returned to the model and shown
 in the timeline), but for useful agents use **`qwen3:4b`** (≤ 8 GB VRAM) or **`qwen3:8b`**.
+
+**Hardware matters.** Without a supported GPU, Ollama runs on the CPU. On a 2-core laptop
+CPU (i7-7500U), `qwen3:4b` generated ~3.4 tokens/s and wrote hundreds of reasoning tokens
+before each answer, so one tool-using reply took 2–5 minutes. It used the calculator
+correctly but exceeded the default 120 s run timeout. Smaller non-thinking models such as
+`qwen2.5:3b` are a better fit for such machines; check `ollama ps` (PROCESSOR column) to see
+whether a model runs on GPU or CPU.
+
+**Automatic settings per model.** When you pick a model in the agent editor, the Studio
+adjusts the settings that model needs and lists them with an **Undo** button:
+
+| Model | Adjustment |
+|---|---|
+| Supports thinking (e.g. qwen3) | Thinking → On (reasoning goes to the run timeline, not the answer) and run timeout → 300 s |
+| Large (≥ 4 GB) | Run timeout → 300 s |
+| No thinking mode | Thinking → model default |
+| No tool support | Tools removed |
 Compare models with `uv run python scripts/spike_ollama_tools.py <model> 5` (from `backend/`).
 
 ## Troubleshooting

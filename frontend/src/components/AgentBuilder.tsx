@@ -7,6 +7,8 @@ import {
   RotateCcw,
   Save,
   Sparkles,
+  Undo2,
+  Wand2,
   Wrench,
 } from "lucide-react";
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
@@ -20,6 +22,12 @@ import {
   type AgentFormValues,
 } from "../lib/agentForm";
 import { cn } from "../lib/cn";
+import {
+  applyAdjustments,
+  modelAdjustments,
+  revertAdjustments,
+  type ModelAdjustment,
+} from "../lib/modelDefaults";
 import { ModelPicker } from "./ModelPicker";
 import { SkillSelector } from "./SkillSelector";
 import { ToolPicker } from "./ToolPicker";
@@ -86,6 +94,10 @@ export function AgentBuilder({
   const [values, setValues] = useState<AgentFormValues>(initialValues);
   const [errors, setErrors] = useState<AgentFormErrors>({});
   const [submitted, setSubmitted] = useState(false);
+  /** Settings changed automatically by the last model selection (shown with Undo). */
+  const [adjusted, setAdjusted] = useState<{ model: string; changes: ModelAdjustment[] } | null>(
+    null,
+  );
 
   const selectedModel = models?.find((m) => m.name === values.model);
   const supportsTools = selectedModel?.supports_tools;
@@ -100,16 +112,33 @@ export function AgentBuilder({
     if (field && !mergedErrors[field]) mergedErrors[field] = message;
   }
 
-  const set = <K extends keyof AgentFormValues>(key: K, value: AgentFormValues[K]) => {
-    setValues((v) => {
-      const next = { ...v, [key]: value };
-      if (submitted) setErrors(validateAgentForm(next, { modelSupportsTools: modelSupport(next) }));
-      return next;
-    });
-  };
-
   const modelSupport = (v: AgentFormValues) =>
     models?.find((m) => m.name === v.model)?.supports_tools;
+
+  const update = (next: AgentFormValues) => {
+    setValues(next);
+    if (submitted) setErrors(validateAgentForm(next, { modelSupportsTools: modelSupport(next) }));
+  };
+
+  const set = <K extends keyof AgentFormValues>(key: K, value: AgentFormValues[K]) =>
+    update({ ...values, [key]: value });
+
+  /** Choosing a model also applies the settings that model needs (undoable). */
+  const selectModel = (name: string) => {
+    const next = { ...values, model: name };
+    const changes = modelAdjustments(
+      models?.find((m) => m.name === name),
+      next,
+    );
+    update(applyAdjustments(next, changes));
+    setAdjusted(changes.length > 0 ? { model: name, changes } : null);
+  };
+
+  const undoAdjustments = () => {
+    if (!adjusted) return;
+    update(revertAdjustments(values, adjusted.changes));
+    setAdjusted(null);
+  };
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -219,7 +248,7 @@ export function AgentBuilder({
                 <ModelPicker
                   models={models}
                   value={values.model}
-                  onChange={(model) => set("model", model)}
+                  onChange={selectModel}
                   loading={modelsLoading}
                   unavailableMessage={modelsUnavailable}
                   invalid={!!mergedErrors.model}
@@ -228,6 +257,35 @@ export function AgentBuilder({
                   <p className="mt-1.5 text-xs font-medium text-red-600 dark:text-red-400">
                     {mergedErrors.model}
                   </p>
+                )}
+                {adjusted && adjusted.model === values.model && (
+                  <div
+                    role="status"
+                    className="mt-3 animate-fade-in rounded-xl border border-brand-500/25 bg-brand-500/5 p-3"
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <Wand2 className="mt-0.5 size-4 shrink-0 text-brand-600 dark:text-brand-400" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold">
+                          Settings adjusted for <span className="font-mono">{adjusted.model}</span>
+                        </p>
+                        <ul className="mt-1.5 space-y-1">
+                          {adjusted.changes.map((c) => (
+                            <li key={c.field} className="text-xs text-muted">
+                              <span className="font-medium text-fg">{c.label}</span> — {c.reason}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={undoAdjustments}
+                        className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-brand-700 hover:bg-brand-500/10 dark:text-brand-400"
+                      >
+                        <Undo2 className="size-3.5" /> Undo
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
 

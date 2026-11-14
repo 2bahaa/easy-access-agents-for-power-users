@@ -57,11 +57,43 @@ describe("AgentBuilder", () => {
         provider: "ollama",
         skill_ids: ["s-cite"],
         tools: [{ name: "calculator", config: {} }],
-        model_params: { num_ctx: 8192 },
+        // qwen3:4b is a thinking model: selecting it turned thinking on and raised the timeout.
+        model_params: { num_ctx: 8192, think: true },
         max_tool_calls: 4,
-        run_timeout_s: 120,
+        run_timeout_s: 300,
       }),
     );
+  });
+
+  it("adjusts settings when a model is chosen, explains why, and can undo", async () => {
+    const { onSubmit } = setup({
+      initialValues: { ...emptyAgentForm(), name: "Bot", tools: [{ name: "calculator", config: {} }] },
+    });
+    await userEvent.click(screen.getByRole("radio", { name: /qwen3:4b/ }));
+    const notice = screen.getByRole("status");
+    expect(notice).toHaveTextContent("Settings adjusted for qwen3:4b");
+    expect(notice).toHaveTextContent("Thinking: On");
+    expect(notice).toHaveTextContent("Run timeout: 300 s");
+    expect(screen.getByLabelText("Thinking")).toHaveValue("on");
+    expect(screen.getByLabelText("Run timeout (s)")).toHaveValue(300);
+
+    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.queryByText(/Settings adjusted/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Run timeout (s)")).toHaveValue(120);
+    await userEvent.click(screen.getByRole("button", { name: "Save agent" }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "qwen3:4b", model_params: {}, run_timeout_s: 120 }),
+    );
+  });
+
+  it("removes tools when switching to a model without tool support", async () => {
+    setup({
+      initialValues: { ...emptyAgentForm(), name: "Bot", model: "qwen3:4b", tools: [{ name: "calculator", config: {} }] },
+    });
+    expect(screen.queryByRole("status")).not.toBeInTheDocument(); // nothing changes on load
+    await userEvent.click(screen.getByRole("radio", { name: /gemma:2b/ }));
+    expect(screen.getByRole("status")).toHaveTextContent("Tools: removed");
+    expect(screen.getByRole("switch", { name: "Enable Calculator" })).toHaveAttribute("aria-checked", "false");
   });
 
   it("prevents enabling tools on a model without tool support", async () => {
