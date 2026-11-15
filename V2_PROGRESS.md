@@ -156,6 +156,11 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 - Live supervisor team (`backend/scripts/e2e_team.py`): delegated to `calculator` with the reason "To perform the multiplication 37 * 43", the member returned 1591, and the team output was "The result of 37 * 43 is 1591." (the small model wrote the final sentence itself instead of delegating to the writer).
 - Frontend 173 tests passed; build clean.
 
+### Deployed-stack verification
+- Docker stack rebuilt with V2 (`docker compose up -d --build`, approved by the user; no new migrations after Phase 9). `/api/health` ok; the Studio serves the CSP and `X-Frame-Options` headers.
+- `backend/scripts/e2e_journey.py` against the stack (http://127.0.0.1:8001, separate test account in its own organization, qwen2.5:3b, default 300 s run cap): **18/18 checks passed** — same answers as the local run (7006652; "12 years"; workflow "1000 | The result is 1000."), approval audited, 4 runs in history, analytics and timeline persisted. The stack correctly rejected a 900 s agent timeout above its 300 s global cap.
+- The Studio UI was not driven in a browser (the user chose to skip that); it is covered by 173 frontend component and page tests.
+
 ## Known issues
 - Rate limiters are per API process (documented); use an edge limiter for strict global limits.
 - Small local models sometimes repeat an already-approved tool call after resuming (seen once with qwen2.5:3b); the repeat call is still permission-checked and runs again.

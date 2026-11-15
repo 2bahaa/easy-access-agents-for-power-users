@@ -9,6 +9,7 @@ approval pause/approve/resume â†’ build, validate, publish and run a workflow â†
 """
 
 import json
+import os
 import pathlib
 import shutil
 import sys
@@ -90,7 +91,7 @@ agent = ok(
                 {"name": "file_reader", "requires_approval": True},
             ],
             "max_tool_calls": 4,
-            "run_timeout_s": 900,
+            "run_timeout_s": int(os.environ.get("E2E_RUN_TIMEOUT_S", "300")),
         },
     ),
     201,
