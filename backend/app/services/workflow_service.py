@@ -3,7 +3,7 @@
 knowledge and memory (every call goes through the same checks as elsewhere)."""
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -323,6 +323,7 @@ async def apply_result(
     run.output = result.output or None
     run.state = {"outputs": result.outputs}
     run.tool_call_count = result.executed
+    run.usage = result.usage
     run.error = result.error
     run.finished_at = func.now()
     if result.status == "waiting_approval" and result.pending:
@@ -361,6 +362,13 @@ class DbWorkflowServices:
         self.tools = tools
         self.workspace_id = workspace_id
         self.run_id = run_id
+        self.usage: dict[str, int] = {}
+
+    def _count(self, usage: Mapping[str, Any] | None) -> None:
+        for key in ("input_tokens", "output_tokens", "total_tokens"):
+            value = (usage or {}).get(key)
+            if isinstance(value, int):
+                self.usage[key] = self.usage.get(key, 0) + value
 
     async def run_agent(self, agent_id: uuid.UUID, prompt: str, use_draft: bool) -> str:
         from app.services.agent_service import get_agent
@@ -391,6 +399,7 @@ class DbWorkflowServices:
         async for _event in agent_run.stream():
             pass  # node-level events only; the agent's own steps are not re-streamed
         result = agent_run.result
+        self._count(result.usage)
         if result.status == "waiting_approval":
             raise NodeError(
                 "This agent needs tool approval; use an Approval node in workflows instead"
@@ -422,6 +431,7 @@ class DbWorkflowServices:
             if p.is_provider_error(e):
                 raise NodeError(f"Model provider error: {str(e)[:200]}") from None
             raise
+        self._count(reply.usage_metadata)
         return str(reply.text)
 
     async def chat(
@@ -446,6 +456,7 @@ class DbWorkflowServices:
             raise
         if not isinstance(reply, AIMessage):
             raise NodeError("The supervisor model returned an unexpected message")
+        self._count(reply.usage_metadata)
         return reply
 
     async def run_tool(self, tool: str, args: dict[str, Any], config: dict[str, Any]) -> str:

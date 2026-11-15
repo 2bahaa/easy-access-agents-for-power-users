@@ -47,6 +47,10 @@ services:
       JWT_SECRET: ${JWT_SECRET:-}
       ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # The nginx container proxies /api: trust forwarded headers from the private
+      # Docker networks only.
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-172.16.0.0/12,192.168.0.0/16,10.0.0.0/8}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
       # Fernet key(s) encrypting stored provider API keys (required to add hosted providers).
       SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-}
       MCP_STDIO_ALLOWED_COMMANDS: ${MCP_STDIO_ALLOWED_COMMANDS:-}

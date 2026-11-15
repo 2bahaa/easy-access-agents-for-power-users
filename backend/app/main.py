@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.api.errors import register_error_handlers
+from app.api.hardening import BodySizeLimitMiddleware, SecurityHeadersMiddleware
 from app.api.ratelimit import SlidingWindowLimiter
 from app.api.routers import (
     agents,
@@ -47,6 +48,8 @@ def create_app(
 ) -> FastAPI:
     """Build the app. Registries can be injected (tests use a fake provider)."""
     settings = settings or get_settings()
+    if settings.environment == "production" and (problems := settings.production_problems()):
+        raise RuntimeError("Unsafe production settings: " + "; ".join(problems))
     if settings.log_format == "json":
         configure_logging("json", settings.log_level)
     configure_tracing(
@@ -93,6 +96,14 @@ def create_app(
     app.state.run_worker = None
     app.state.login_limiter = SlidingWindowLimiter(settings.login_attempts_per_5min, 300)
     app.state.register_limiter = SlidingWindowLimiter(settings.registrations_per_hour, 3600)
+    app.state.run_limiter = SlidingWindowLimiter(settings.runs_per_minute, 60)
+    app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(
+        BodySizeLimitMiddleware,
+        max_bytes=settings.max_request_bytes,
+        # Multipart overhead on top of the document itself.
+        overrides=[("/api/knowledge/", settings.knowledge_max_upload_bytes + 100_000)],
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,

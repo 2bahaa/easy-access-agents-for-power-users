@@ -8,6 +8,7 @@ from fastapi import APIRouter, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.deps import PrincipalDep, ProviderResolverDep, SessionDep, SettingsDep, ToolRegistryDep
+from app.api.hardening import RunRateLimit
 from app.db.models import Workflow
 from app.runtime.workflow.spec import SpecProblem, WorkflowSpec, node_type_schemas
 from app.schemas.runs import RunRead
@@ -220,6 +221,7 @@ async def start_run(
     settings: SettingsDep,
     registry: ToolRegistryDep,
     resolver: ProviderResolverDep,
+    _: RunRateLimit,
 ) -> RunRead:
     """Queue a run; follow it with GET /runs/{id}/stream (node.* events)."""
     run = await workflow_service.start_run(

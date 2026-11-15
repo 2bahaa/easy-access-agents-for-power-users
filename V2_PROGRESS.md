@@ -16,8 +16,8 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 | 8 | Visual workflows | done | 092036d |
 | 9 | Multi-agent teams | done | 7f8ec7b |
 | 10 | Analytics & observability | done | 4988a87 |
-| 11 | SDK packaging | done | (this commit) |
-| 12 | Production hardening | pending | – |
+| 11 | SDK packaging | done | 34b7146 |
+| 12 | Production hardening | done | (this commit) |
 
 ## Architectural decisions
 - Foundation first (durable runs + auth before feature phases).
@@ -136,8 +136,23 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 - Decision: one source tree (the Studio's `components/`) with a packaging entry, instead of moving the components into a separate npm workspace. This avoids churn in the Docker and CI layouts, and the "no fetching in components" rule keeps the boundary clean.
 - Tests: frontend 170 passed (+3: export surface, rendering without app context, client headers/streaming/errors). typecheck, lint, app build, SDK build and example build clean.
 
+### Phase 12: Production hardening
+- `ENVIRONMENT=production` refuses to start with unsafe settings (weak or missing JWT secret, no encryption key, insecure cookie, wildcard CORS, example DB password).
+- Request size limit middleware (Content-Length and chunked bodies; separate limit for knowledge uploads), security headers on the API, per-user run rate limit (`RUNS_PER_MINUTE`) on chat messages and workflow runs.
+- Proxy trust is configurable (`FORWARDED_ALLOW_IPS`; compose trusts only private Docker ranges instead of `*`). nginx: CSP without inline scripts (the theme bootstrap moved to `/theme-init.js`), nosniff, `X-Frame-Options`, `Referrer-Policy`, `server_tokens off`, an upload-specific body size; caching switched to `expires` so the security headers apply on every location.
+- Route-level code splitting: the main bundle went from 742 kB to 374 kB (no chunk-size warning).
+- Fix found by live testing: workflow runs now record provider token usage (agent, LLM and supervisor calls) in `runs.usage` and `run.completed`.
+- Docs: `docs/DEPLOYMENT.md` (production configuration, scaling, observability, backups, security checklist); README updated for V2.
+- Tests: backend 338 passed / 2 skipped (+5: headers, 413 by size and by chunked stream, upload exemption, run rate limit, production guard, workflow token usage); frontend 170 passed. ruff, mypy, typecheck, lint, app/SDK/example builds clean.
+
+### End-to-end journey (live, no fakes)
+`backend/scripts/e2e_journey.py` ran against a local API with real Ollama on a scratch database (`eaa_e2e`), with the embedded worker and JSON logs. Steps: register → health → model discovery (tools capability) → create an agent with calculator + file_reader (approval required) and a skill → publish v1 → streamed chat with a calculator call → a file_reader call pauses as `waiting_approval` → shown in the inbox → approved (audited) → the continuation run executes the tool → build, validate, publish and run a workflow (start → agent → llm → end) → run history, analytics and persisted timeline.
+- With `qwen2.5:3b`: 15/18 checks passed on the first run; the three failures were bugs in the script (wrong event field name, wrong expected run count), fixed afterwards. Verified from the database: answers "The result of 1234 * 5678 is 7006652." and "The inverter warranty lasts 12 years."; workflow output "1000 | The result is 1000."; analytics 4 runs, 7 tool calls, 2587/124 tokens.
+- With `qwen3:4b` on this 2-core CPU, each turn takes about 200–300 s (it reasons silently first), so chat runs hit the default `RUN_TIMEOUT_CAP_S=300`; the workflow path completed. On slow hardware, raise `RUN_TIMEOUT_CAP_S` or use a smaller tool-capable model.
+
 ## Known issues
-- Main frontend bundle is ~678 kB minified (203 kB gzip); the workflow editor is split out; further route splitting is a Phase 12 task.
+- Rate limiters are per API process (documented); use an edge limiter for strict global limits.
+- Small local models sometimes repeat an already-approved tool call after resuming (seen once with qwen2.5:3b); the repeat call is still permission-checked and runs again.
 - Python text-mode writes on Windows produce CRLF; scripts now write bytes/LF (`.gitattributes` normalizes in git; `*.sh` must be LF for containers).
 - `uv` lives at `%APPDATA%\Python\Python314\Scripts\uv.exe` on this machine (not on PATH).
 

@@ -106,6 +106,8 @@ class WorkflowResult:
     error: str | None = None
     executed: int = 0
     pending: dict[str, str] | None = None  # {"node_id", "message"} when paused
+    # Provider-reported tokens of every model call made by the run's nodes.
+    usage: dict[str, int] = field(default_factory=dict)
 
 
 def _merge(a: dict[str, str], b: dict[str, str]) -> dict[str, str]:
@@ -173,6 +175,8 @@ class WorkflowRun:
     # ---- internals ---------------------------------------------------------------------
 
     def _emit(self, event_type: str, **payload: Any) -> None:
+        if event_type.startswith("run.") and event_type != "run.started":
+            self.usage()  # terminal: the result carries the tokens spent so far
         self._seq += 1
         self._queue.put_nowait(
             agent_event_adapter.validate_python(
@@ -243,10 +247,15 @@ class WorkflowRun:
         self._emit(
             "run.completed",
             tool_call_count=self.result.executed,
-            usage={},
+            usage=self.usage(),
             duration_ms=self._ms(),
             output=self.result.output,
         )
+
+    def usage(self) -> dict[str, int]:
+        """Token usage the services recorded (services without a `usage` dict report none)."""
+        self.result.usage = dict(getattr(self.services, "usage", None) or {})
+        return self.result.usage
 
     # ---- graph construction --------------------------------------------------------------
 

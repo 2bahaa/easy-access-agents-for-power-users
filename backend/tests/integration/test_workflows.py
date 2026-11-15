@@ -64,6 +64,7 @@ async def test_run_a_workflow_end_to_end(client: AsyncClient, fake_provider: Fak
     assert events[-1]["data"]["output"] == "A short essay. | 42"
     stored = (await client.get(f"/api/runs/{run['id']}")).json()
     assert stored["status"] == "completed" and stored["output"] == "A short essay. | 42"
+    assert stored["usage"]["total_tokens"] == 15  # the LLM node's reported usage
     assert fake_provider.model.prompts[-1][-1].content == "Write about tides"
     runs = (await client.get(f"/api/workflows/{wf['id']}/runs")).json()
     assert [r["id"] for r in runs] == [run["id"]]

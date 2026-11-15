@@ -75,7 +75,6 @@ class Settings(BaseSettings):
     # Pending approval requests expire after this long (then count as rejected).
     approval_ttl_s: int = Field(default=86_400, ge=60)
 
-    # Comma-separated list of allowed browser origins.
     # Observability: LOG_FORMAT=json for structured logs; traces only when OTEL_ENABLED.
     log_format: Literal["text", "json"] = "text"
     log_level: str = "INFO"
@@ -83,12 +82,35 @@ class Settings(BaseSettings):
     otel_exporter_otlp_endpoint: str = ""  # e.g. http://127.0.0.1:4318; empty = console
     otel_service_name: str = "easy-access-agents"
 
+    # ENVIRONMENT=production refuses to start with unsafe settings (see production_problems).
+    environment: Literal["development", "production"] = "development"
+    # Largest accepted request body (knowledge uploads use KNOWLEDGE_MAX_UPLOAD_BYTES).
+    max_request_bytes: int = Field(default=1_000_000, ge=10_000)
+    # Runs a user may start per minute (messages, workflow runs), per API process.
+    runs_per_minute: int = Field(default=30, ge=1)
+
+    # Comma-separated list of allowed browser origins.
     cors_origins: str = "http://localhost:5173"
 
     @field_validator("workspace_dir", "skills_dir")
     @classmethod
     def _resolve_relative_to_backend(cls, v: Path) -> Path:
         return v if v.is_absolute() else (BACKEND_DIR / v).resolve()
+
+    def production_problems(self) -> list[str]:
+        """Settings that are acceptable for local development but unsafe in production."""
+        problems = []
+        if len(self.jwt_secret.get_secret_value()) < 32:
+            problems.append("JWT_SECRET must be set to a random value of at least 32 characters")
+        if not self.secret_encryption_key.get_secret_value():
+            problems.append("SECRET_ENCRYPTION_KEY must be set (Fernet key)")
+        if not self.cookie_secure:
+            problems.append("COOKIE_SECURE must be true (serve over HTTPS)")
+        if "*" in self.cors_origin_list:
+            problems.append("CORS_ORIGINS must list explicit origins, not *")
+        if "change-me" in self.database_url:
+            problems.append("DATABASE_URL still uses the example password")
+        return problems
 
     @property
     def listen_dsn(self) -> str:

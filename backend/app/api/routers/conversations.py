@@ -11,6 +11,7 @@ from app.api.deps import (
     SessionFactoryDep,
     SettingsDep,
 )
+from app.api.hardening import RunRateLimit
 from app.api.sse import SSE_HEADERS, follow_run_sse
 from app.schemas.conversations import (
     ConversationCreate,
@@ -82,6 +83,7 @@ async def post_message(
     session_factory: SessionFactoryDep,
     settings: SettingsDep,
     resolver: ProviderResolverDep,
+    _: RunRateLimit,
 ) -> StreamingResponse:
     """Persist the user message, queue a run and stream its events (SSE).
     Errors before the run is queued are normal HTTP errors; later ones arrive as run.failed.

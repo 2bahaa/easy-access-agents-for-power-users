@@ -196,3 +196,20 @@ async def test_retries_exhausted_and_continue_on_error() -> None:
     r, events = await run(resilient(on_error="continue"), Flaky(5))
     assert (r.result.status, r.result.output) == ("completed", "[]")
     assert [e.continued for e in events if e.type == "node.failed"] == [True]
+
+
+class Counting(FakeServices):
+    def __init__(self) -> None:
+        super().__init__()
+        self.usage: dict[str, int] = {}
+
+    async def call_llm(self, *args: Any) -> str:
+        for k, v in {"input_tokens": 7, "output_tokens": 3, "total_tokens": 10}.items():
+            self.usage[k] = self.usage.get(k, 0) + v
+        return "fine"
+
+
+async def test_workflow_result_carries_token_usage() -> None:
+    r, events = await run(resilient(), Counting())
+    assert r.result.usage == {"input_tokens": 7, "output_tokens": 3, "total_tokens": 10}
+    assert events[-1].usage == r.result.usage

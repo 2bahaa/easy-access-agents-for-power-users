@@ -66,7 +66,14 @@ class FakeChatModel(BaseChatModel):
         run_manager: CallbackManagerForLLMRun | None = None,
         **kwargs: Any,
     ) -> ChatResult:
-        return ChatResult(generations=[ChatGeneration(message=self._next(messages))])
+        msg = self._next(messages)
+        if msg.usage_metadata is None:  # same usage report as the streamed path
+            msg = msg.model_copy(
+                update={
+                    "usage_metadata": {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}
+                }
+            )
+        return ChatResult(generations=[ChatGeneration(message=msg)])
 
     def _chunks(self, msg: AIMessage) -> Iterator[ChatGenerationChunk]:
         reasoning = msg.additional_kwargs.get("reasoning_content")

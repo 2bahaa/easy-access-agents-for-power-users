@@ -4,10 +4,26 @@ An Agent Studio for building, configuring and running your own AI agents on loca
 models: pick a model, write instructions, attach Markdown skills, allow specific tools,
 and watch tokens and tool calls stream live.
 
-> Status: **MVP complete** (roadmap phases 0–7). See [acceptance results](docs/IMPLEMENTATION_ROADMAP.md#mvp-acceptance-results).
+> Status: **V2 complete** (phases 0–12, see [V2_PROGRESS.md](V2_PROGRESS.md)). It is a multi-tenant agent platform with
+> several providers, MCP and custom tools, knowledge/RAG and memory, human approvals, visual workflows,
+> multi-agent teams, run analytics, an embeddable UI SDK and production hardening.
 
-Design docs: [Project spec](docs/PROJECT_SPEC.md) · [Architecture](docs/ARCHITECTURE.md) ·
-[API design](docs/API_DESIGN.md) · [Implementation roadmap](docs/IMPLEMENTATION_ROADMAP.md)
+Design docs: [V2 architecture](docs/V2_ARCHITECTURE.md) · [Architecture](docs/ARCHITECTURE.md) ·
+[API design](docs/API_DESIGN.md) · [Deployment & security](docs/DEPLOYMENT.md) ·
+[Agent UI SDK](packages/agent-ui/README.md) · [Project spec](docs/PROJECT_SPEC.md)
+
+## V2 at a glance
+
+- **Workspace & access:** email/password sign-in, organizations and workspaces, roles (viewer → owner), API keys, audit log.
+- **Providers:** Ollama, OpenAI, Anthropic, Gemini and OpenAI-compatible endpoints, with encrypted keys, model discovery, capability probes and health tests.
+- **Agent builder:** templates, drafts, published versions with diff and rollback, playground, import/export, duplication.
+- **Tools:** built-in tools, MCP servers (stdio/HTTP), custom HTTP tools, Markdown skills with versions; every call is permission-checked, validated and time-limited.
+- **Knowledge & memory:** document ingestion, hybrid semantic and full-text search with citations, and per-agent memory with deletion.
+- **Approvals:** sensitive tool calls (or workflow steps) pause until a person approves or rejects them; decisions are audited.
+- **Workflows:** a drag-and-drop editor (agent, LLM, tool, knowledge, memory, condition, router, parallel, approval, team nodes) running on a durable backend, with live node status, versions, retries and continue-on-error.
+- **Teams:** a supervisor delegates to member agents under a hard budget; the trace shows who did what and why.
+- **Runs:** history, timelines, cancel and re-run, real usage analytics, JSON logs and OpenTelemetry traces.
+- **SDK:** `@easy-access/agent-ui` packages the prop-driven components plus a small client for other apps.
 
 ## Features
 
@@ -200,7 +216,8 @@ Compare models with `uv run python scripts/spike_ollama_tools.py <model> 5` (fro
 backend/     FastAPI app, agent runtime, tools, skills, migrations, tests, Dockerfile
 frontend/    React Agent Studio, nginx config, Dockerfile
 workspace/   Sandbox folder: the only place the file reader can read (read-only in Docker)
-docs/        Spec, architecture, API design, roadmap
+packages/    agent-ui SDK package (built from frontend/src/sdk)
+docs/        Spec, architecture, API design, roadmap, deployment
 ```
 
 ## Roadmap
@@ -214,5 +231,4 @@ docs/        Spec, architecture, API design, roadmap
 6. ✅ Frontend Chat — streaming chat + run timeline
 7. ✅ Docker & docs
 
-Next (post-MVP, see `docs/ARCHITECTURE.md` §10): more providers, MCP tools, RAG,
-human-in-the-loop, multi-agent, visual workflow editor, auth, SDK packaging.
+V2 (phases 0–12) is complete; see [V2_PROGRESS.md](V2_PROGRESS.md) for each phase's scope, tests and commits.
