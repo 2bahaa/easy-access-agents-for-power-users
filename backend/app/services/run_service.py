@@ -25,6 +25,7 @@ from app.db.models import (
 from app.runtime.executor import AgentRun
 from app.runtime.types import (
     AgentConfig,
+    ResumeDecisions,
     RunRequest,
     RunResult,
     RuntimeCaps,
@@ -162,6 +163,7 @@ async def apply_result(
 ) -> None:
     """Write a finished run's messages and final status (caller commits, together with
     the terminal event, so subscribers never see the end before the messages)."""
+    assert run.conversation_id is not None, "agent runs always belong to a conversation"
     next_seq = await _next_seq(session, run.conversation_id)
     awaiting = frozenset(str(p["call_id"]) for p in result.pending_approvals)
     for offset, msg in enumerate(_with_answered_tool_calls(result.new_messages, awaiting)):
@@ -244,54 +246,48 @@ async def start_run(
     return run
 
 
-async def prepare_agent_run(
+async def build_agent_run(
     session: AsyncSession,
-    run: Run,
     *,
+    run_id: uuid.UUID,
+    workspace_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    config: AgentConfig,
+    history: list[BaseMessage],
     settings: Settings,
     resolver: ProviderResolver,
     tools: ToolRegistry,
-    session_factory: SessionFactory | None = None,
+    session_factory: SessionFactory | None,
+    conversation_id: uuid.UUID | None = None,
+    user_message_id: uuid.UUID | None = None,
+    resume: ResumeDecisions | None = None,
 ) -> AgentRun:
-    """Rebuild a claimed run's runtime inputs from the database (worker side)."""
-    config = AgentConfig.model_validate(run.agent_snapshot)
-    provider = await resolver.resolve(
-        session, run.workspace_id, config.provider, config.connection_id
-    )
-    workspace = await session.get(Workspace, run.workspace_id)
+    """Assemble an AgentRun: provider, per-run tool registry (granted external and data
+    tools only, secrets in memory) and the workspace file sandbox."""
+    provider = await resolver.resolve(session, workspace_id, config.provider, config.connection_id)
+    workspace = await session.get(Workspace, workspace_id)
     if workspace is None:
-        raise NotFoundError(f"Workspace of run {run.id} not found")
-    messages = await conversation_service.list_messages(session, run.conversation_id)
-    user_message_id = next(
-        (m.id for m in messages if m.run_id == run.id and m.role == "user"), None
-    )
+        raise NotFoundError(f"Workspace {workspace_id} not found")
     external = [t.name for t in config.tools if is_external(t.name) and not is_data_tool(t.name)]
-    if external:  # only the agent's granted, still-enabled external tools (secrets in memory)
+    if external:
         tools = tools.extended(
             await capability_service.external_tools(
-                session, run.workspace_id, settings, resolver.secrets, names=external
+                session, workspace_id, settings, resolver.secrets, names=external
             )
         )
     data_grants = {t.name: t.config for t in config.tools if is_data_tool(t.name)}
     if data_grants and session_factory is not None:
         tools = tools.extended(
             knowledge_service.runtime_tools(
-                session_factory,
-                resolver,
-                settings,
-                run.workspace_id,
-                run.agent_id,
-                run.id,
-                data_grants,
+                session_factory, resolver, settings, workspace_id, agent_id, run_id, data_grants
             )
         )
-    resume = await approval_service.decisions_for(session, run.resume_of) if run.resume_of else None
     return AgentRun(
         RunRequest(
-            run_id=run.id,
+            run_id=run_id,
             config=config,
-            history=to_langchain(messages),
-            conversation_id=run.conversation_id,
+            history=history,
+            conversation_id=conversation_id,
             user_message_id=user_message_id,
             resume=resume,
         ),
@@ -303,6 +299,40 @@ async def prepare_agent_run(
             tool_timeout_s=settings.tool_timeout_s,
         ),
         ToolContext(workspace_dir=workspace_files_dir(settings, workspace)),
+    )
+
+
+async def prepare_agent_run(
+    session: AsyncSession,
+    run: Run,
+    *,
+    settings: Settings,
+    resolver: ProviderResolver,
+    tools: ToolRegistry,
+    session_factory: SessionFactory | None = None,
+) -> AgentRun:
+    """Rebuild a claimed chat run's runtime inputs from the database (worker side)."""
+    assert run.conversation_id is not None and run.agent_id is not None
+    config = AgentConfig.model_validate(run.agent_snapshot)
+    messages = await conversation_service.list_messages(session, run.conversation_id)
+    user_message_id = next(
+        (m.id for m in messages if m.run_id == run.id and m.role == "user"), None
+    )
+    resume = await approval_service.decisions_for(session, run.resume_of) if run.resume_of else None
+    return await build_agent_run(
+        session,
+        run_id=run.id,
+        workspace_id=run.workspace_id,
+        agent_id=run.agent_id,
+        config=config,
+        history=to_langchain(messages),
+        settings=settings,
+        resolver=resolver,
+        tools=tools,
+        session_factory=session_factory,
+        conversation_id=run.conversation_id,
+        user_message_id=user_message_id,
+        resume=resume,
     )
 
 

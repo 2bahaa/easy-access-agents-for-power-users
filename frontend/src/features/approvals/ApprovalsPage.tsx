@@ -85,13 +85,17 @@ function Pending({ canDecide }: { canDecide: boolean }) {
           disabled={!canDecide}
           busy={decide.isPending && decide.variables?.id === a.id}
           context={
-            <>
-              {names.get(a.agent_id) ?? "Agent"} ·{" "}
-              <Link className="text-brand-600 hover:underline dark:text-brand-400" to={`/agents/${a.agent_id}/chat/${a.conversation_id}`}>
-                open conversation
-              </Link>{" "}
-              · requested {relativeTime(a.created_at)}
-            </>
+            a.agent_id && a.conversation_id ? (
+              <>
+                {names.get(a.agent_id) ?? "Agent"} ·{" "}
+                <Link className="text-brand-600 hover:underline dark:text-brand-400" to={`/agents/${a.agent_id}/chat/${a.conversation_id}`}>
+                  open conversation
+                </Link>{" "}
+                · requested {relativeTime(a.created_at)}
+              </>
+            ) : (
+              <>Workflow approval step · requested {relativeTime(a.created_at)}</>
+            )
           }
           onDecide={(d) =>
             decide.mutate(

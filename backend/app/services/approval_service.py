@@ -172,8 +172,11 @@ async def _maybe_resume(session: AsyncSession, run_id: uuid.UUID) -> Run | None:
     await session.flush()  # leave the active set before the continuation enters it
     continuation = Run(
         workspace_id=original.workspace_id,
+        kind=original.kind,
         conversation_id=original.conversation_id,
         agent_id=original.agent_id,
+        workflow_id=original.workflow_id,
+        inputs=original.inputs,
         status="queued",
         agent_version=original.agent_version,
         agent_snapshot=original.agent_snapshot,

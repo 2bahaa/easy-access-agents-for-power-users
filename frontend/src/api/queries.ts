@@ -25,6 +25,11 @@ export const keys = {
   conversation: (id: string) => ["conversation", id] as const,
   runEvents: (runId: string) => ["runs", runId, "events"] as const,
   members: ["members"] as const,
+  workflows: ["workflows"] as const,
+  workflow: (id: string) => ["workflows", id] as const,
+  workflowRuns: (id: string) => ["workflows", id, "runs"] as const,
+  workflowVersions: (id: string) => ["workflows", id, "versions"] as const,
+  workflowTemplates: ["workflow-templates"] as const,
   collections: ["knowledge", "collections"] as const,
   documents: (id: string) => ["knowledge", "documents", id] as const,
   memories: (agentId: string) => ["memories", agentId] as const,
@@ -370,7 +375,8 @@ export function useDecideApproval() {
       api.decideApproval(id, decision),
     onSuccess: (result) => {
       void qc.invalidateQueries({ queryKey: ["approvals"] });
-      void qc.invalidateQueries({ queryKey: keys.conversation(result.approval.conversation_id) });
+      if (result.approval.conversation_id)
+        void qc.invalidateQueries({ queryKey: keys.conversation(result.approval.conversation_id) });
     },
   });
 }
@@ -460,5 +466,25 @@ export function useClearMemories(agentId: string) {
   return useMutation({
     mutationFn: () => api.clearMemories(agentId),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.memories(agentId) }),
+  });
+}
+
+// ---- workflows ----
+
+export const useWorkflows = () => useQuery({ queryKey: keys.workflows, queryFn: api.listWorkflows });
+export const useWorkflow = (id: string | undefined) =>
+  useQuery({ queryKey: keys.workflow(id ?? ""), queryFn: () => api.getWorkflow(id!), enabled: !!id });
+export const useWorkflowRuns = (id: string | undefined) =>
+  useQuery({ queryKey: keys.workflowRuns(id ?? ""), queryFn: () => api.listWorkflowRuns(id!), enabled: !!id });
+export const useWorkflowVersions = (id: string | undefined) =>
+  useQuery({ queryKey: keys.workflowVersions(id ?? ""), queryFn: () => api.listWorkflowVersions(id!), enabled: !!id });
+export const useWorkflowTemplates = () =>
+  useQuery({ queryKey: keys.workflowTemplates, queryFn: api.listWorkflowTemplates, staleTime: Infinity });
+
+export function useDeleteWorkflow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteWorkflow(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.workflows }),
   });
 }

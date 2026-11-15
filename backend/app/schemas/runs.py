@@ -9,8 +9,12 @@ class RunRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    conversation_id: uuid.UUID
-    agent_id: uuid.UUID
+    kind: str = "agent"
+    conversation_id: uuid.UUID | None
+    agent_id: uuid.UUID | None
+    workflow_id: uuid.UUID | None = None
+    inputs: dict[str, Any] | None = None
+    output: str | None = None
     status: str
     agent_version: int | None = None  # None = ran the draft
     resume_of: uuid.UUID | None = None  # continuation of a run that awaited approval

@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     # Knowledge uploads larger than this are rejected.
     knowledge_max_upload_bytes: int = Field(default=10_000_000, ge=1000)
 
+    # Upper bound for one workflow run (all nodes together).
+    workflow_timeout_s: int = Field(default=600, ge=10)
+
     # Pending approval requests expire after this long (then count as rejected).
     approval_ttl_s: int = Field(default=86_400, ge=60)
 

@@ -64,6 +64,15 @@ def _preview(text: str) -> str:
     return text[:RESULT_PREVIEW_CHARS] + f"… [{len(text) - RESULT_PREVIEW_CHARS} more chars]"
 
 
+class ToolCallError(Exception):
+    """A single tool call failed (public form of the internal failure, for workflows)."""
+
+    def __init__(self, kind: ToolFailureKind, message: str) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.message = message
+
+
 class ToolNode:
     def __init__(
         self,
@@ -181,6 +190,14 @@ class ToolNode:
             )
         )
         return self._message(result, call_id, name, error=False)
+
+    async def run_single(self, name: str, raw_args: dict[str, Any]) -> str:
+        """Execute one call with every check (permission, validation, timeout) — used by
+        workflow tool nodes. Raises ToolCallError."""
+        try:
+            return await self._run(name, raw_args)
+        except _ToolFailure as f:
+            raise ToolCallError(f.kind, f.message) from None
 
     async def _run(self, name: str, raw_args: dict[str, Any]) -> str:
         grant = self.grants.get(name)

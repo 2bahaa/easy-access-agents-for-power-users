@@ -23,6 +23,7 @@ from app.api.routers import (
     runs,
     skills,
     tools,
+    workflows,
 )
 from app.config import Settings, get_settings
 from app.crypto import SecretBox
@@ -100,6 +101,7 @@ def create_app(
     app.include_router(capabilities.router, prefix="/api")
     app.include_router(approvals.router, prefix="/api")
     app.include_router(knowledge.router, prefix="/api")
+    app.include_router(workflows.router, prefix="/api")
     app.include_router(skills.templates_router, prefix="/api")
     return app
 

@@ -199,6 +199,10 @@ export type RunStatus = "queued" | "running" | "waiting_approval" | "resumed" | 
 
 export interface Run {
   id: string;
+  kind?: "agent" | "workflow";
+  workflow_id?: string | null;
+  inputs?: Record<string, string> | null;
+  output?: string | null;
   conversation_id: string;
   agent_id: string;
   status: RunStatus;
@@ -405,8 +409,9 @@ export interface CustomTool extends Omit<CustomToolWrite, "headers"> {
 export interface Approval {
   id: string;
   run_id: string;
-  conversation_id: string;
-  agent_id: string;
+  /** null for workflow approval steps. */
+  conversation_id: string | null;
+  agent_id: string | null;
   call_id: string;
   tool_name: string;
   args: Record<string, unknown>;
@@ -470,5 +475,61 @@ export interface AgentMemory {
   agent_id: string;
   content: string;
   run_id: string | null;
+  created_at: string;
+}
+
+// ---- workflows ----
+
+export type WorkflowNodeType =
+  | "start" | "end" | "agent" | "llm" | "tool" | "knowledge" | "memory" | "condition" | "router" | "parallel" | "approval";
+
+export interface WorkflowNodeSpec {
+  id: string;
+  type: WorkflowNodeType;
+  label?: string;
+  config: Record<string, unknown>;
+  position?: { x: number; y: number };
+}
+
+export interface WorkflowEdgeSpec {
+  source: string;
+  target: string;
+  source_handle?: string | null;
+}
+
+export interface WorkflowSpec {
+  schema_version?: 1;
+  nodes: WorkflowNodeSpec[];
+  edges: WorkflowEdgeSpec[];
+}
+
+export interface WorkflowSummary {
+  id: string;
+  name: string;
+  description: string;
+  node_count: number;
+  updated_at: string;
+}
+
+export interface Workflow extends WorkflowSummary {
+  spec: WorkflowSpec;
+  created_at: string;
+}
+
+export interface SpecProblem {
+  node_id: string | null;
+  message: string;
+}
+
+export interface WorkflowTemplate {
+  id: string;
+  name: string;
+  description: string;
+  spec: WorkflowSpec;
+}
+
+export interface WorkflowVersion {
+  version: number;
+  note: string;
   created_at: string;
 }

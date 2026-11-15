@@ -10,6 +10,8 @@ import { ToolsPage } from "./features/tools/ToolsPage";
 import { ApprovalsPage } from "./features/approvals/ApprovalsPage";
 import { LoginPage, RegisterPage } from "./features/auth/AuthPages";
 import { KnowledgePage } from "./features/knowledge/KnowledgePage";
+import { LazyWorkflowEditor } from "./features/workflows/LazyWorkflowEditor";
+import { WorkflowsPage } from "./features/workflows/WorkflowsPage";
 import { RequireAuth } from "./features/auth/RequireAuth";
 import { ProvidersPage } from "./features/providers/ProvidersPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
@@ -38,6 +40,8 @@ export const routes: RouteObject[] = [
       { path: "tools", element: <ToolsPage /> },
       { path: "approvals", element: <ApprovalsPage /> },
       { path: "knowledge", element: <KnowledgePage /> },
+      { path: "workflows", element: <WorkflowsPage /> },
+      { path: "workflows/:workflowId", element: <LazyWorkflowEditor /> },
       { path: "providers", element: <ProvidersPage /> },
       { path: "settings", element: <SettingsPage /> },
       { path: "*", element: <NotFoundPage /> },

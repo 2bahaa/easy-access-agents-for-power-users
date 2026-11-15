@@ -21,6 +21,12 @@ import type {
   ProviderConnectionWrite,
   AgentExportDocument,
   AgentMemory,
+  SpecProblem,
+  Workflow,
+  WorkflowSpec,
+  WorkflowSummary,
+  WorkflowTemplate,
+  WorkflowVersion,
   AgentTemplate,
   Approval,
   KnowledgeCollection,
@@ -212,6 +218,26 @@ export const api = {
     return response.text();
   },
   importSkill: (markdown: string) => request<Skill>("/skills/import", json("POST", { markdown })),
+
+  // ---- workflows ----
+  listWorkflows: () => request<WorkflowSummary[]>("/workflows"),
+  getWorkflow: (id: string) => request<Workflow>(`/workflows/${id}`),
+  createWorkflow: (data: { name: string; description?: string; spec: WorkflowSpec }) =>
+    request<Workflow>("/workflows", json("POST", data)),
+  updateWorkflow: (id: string, data: { name: string; description?: string; spec: WorkflowSpec }) =>
+    request<Workflow>(`/workflows/${id}`, json("PUT", data)),
+  deleteWorkflow: (id: string) => request<void>(`/workflows/${id}`, { method: "DELETE" }),
+  validateWorkflow: (spec: WorkflowSpec) =>
+    request<{ valid: boolean; problems: SpecProblem[] }>("/workflows/validate", json("POST", spec)),
+  publishWorkflow: (id: string, note: string) =>
+    request<WorkflowVersion>(`/workflows/${id}/publish`, json("POST", { note })),
+  listWorkflowVersions: (id: string) => request<WorkflowVersion[]>(`/workflows/${id}/versions`),
+  restoreWorkflowVersion: (id: string, version: number) =>
+    request<Workflow>(`/workflows/${id}/versions/${version}/restore`, { method: "POST" }),
+  startWorkflowRun: (id: string, inputs: Record<string, string>) =>
+    request<Run>(`/workflows/${id}/runs`, json("POST", { inputs })),
+  listWorkflowRuns: (id: string) => request<Run[]>(`/workflows/${id}/runs`),
+  listWorkflowTemplates: () => request<WorkflowTemplate[]>("/workflow-templates"),
 
   // ---- knowledge & memory ----
   listCollections: () => request<KnowledgeCollection[]>("/knowledge/collections"),

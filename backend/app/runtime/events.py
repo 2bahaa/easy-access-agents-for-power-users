@@ -25,8 +25,9 @@ class _EventBase(BaseModel):
 
 class RunStarted(_EventBase):
     type: Literal["run.started"] = "run.started"
-    agent_id: uuid.UUID
-    model: str
+    agent_id: uuid.UUID | None = None  # None for workflow runs
+    model: str | None = None
+    workflow_id: uuid.UUID | None = None
     conversation_id: uuid.UUID | None = None
     user_message_id: uuid.UUID | None = None
 
@@ -84,16 +85,44 @@ class ApprovalRequested(_EventBase):
     args: dict[str, Any]
 
 
-class RunCompleted(_EventBase):
-    type: Literal["run.completed"] = "run.completed"
-    status: Literal["completed"] = "completed"
-    tool_call_count: int
-    usage: dict[str, int]
+class NodeStarted(_EventBase):
+    """Workflow runs: a node began executing."""
+
+    type: Literal["node.started"] = "node.started"
+    node_id: str
+    node_type: str
+    label: str = ""
+
+
+class NodeCompleted(_EventBase):
+    type: Literal["node.completed"] = "node.completed"
+    node_id: str
+    output: str  # preview, truncated
     duration_ms: int
 
 
+class NodeFailed(_EventBase):
+    type: Literal["node.failed"] = "node.failed"
+    node_id: str
+    error: str
+
+
+class RunCompleted(_EventBase):
+    type: Literal["run.completed"] = "run.completed"
+    status: Literal["completed"] = "completed"
+    tool_call_count: int  # workflow runs: executed nodes
+    usage: dict[str, int]
+    duration_ms: int
+    output: str | None = None  # workflow result
+
+
 RunFailureCode = Literal[
-    "limit_exceeded", "timeout", "provider_error", "model_no_tool_support", "internal_error"
+    "limit_exceeded",
+    "timeout",
+    "provider_error",
+    "model_no_tool_support",
+    "internal_error",
+    "node_failed",
 ]
 
 
@@ -124,6 +153,9 @@ AgentEvent = Annotated[
     | ToolCallCompleted
     | ToolCallFailed
     | ApprovalRequested
+    | NodeStarted
+    | NodeCompleted
+    | NodeFailed
     | RunCompleted
     | RunFailed
     | RunCancelled

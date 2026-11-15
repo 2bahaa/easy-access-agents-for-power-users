@@ -95,6 +95,23 @@ Save-time checks: unknown tool / invalid tool config / unknown provider / limits
 |---|---|---|
 | GET | `/tools` | `ToolInfo[]`: `{name, description, args_schema, config_schema, timeout_s}` (JSON Schemas) |
 
+### Workflows (V2)
+`WorkflowSpec` = `{schema_version: 1, nodes: [{id, type, label, config, position}], edges: [{source, target, source_handle}]}`. Node types: `start` (inputs), `end` (output template), `agent`, `llm`, `tool`, `knowledge`, `memory`, `condition` (safe expression; branches `true`/`false`), `router` (LLM picks one of `routes`), `parallel` (fan-out; nodes with several incoming edges join), `approval` (pauses; branches `approved`/`rejected`). Templates: `{{ node_id }}`, `{{ input.name }}`. The server validates everything before running (one Start, reachable End, no loops, branch handles, configs, workspace references); the canvas JSON is never trusted.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/workflow-node-types` | JSON Schemas of node configs |
+| GET | `/workflow-templates` | Built-in starting points |
+| POST | `/workflows/validate` | `WorkflowSpec` → `{valid, problems[{node_id, message}]}` |
+| GET/POST | `/workflows` | List / create `{name, description, spec}` (drafts may be incomplete) |
+| GET/PUT/DELETE | `/workflows/{id}` | Read / save draft / delete (editor) |
+| POST | `/workflows/{id}/publish` | Freeze a valid spec as version n+1 |
+| GET | `/workflows/{id}/versions`; POST `/workflows/{id}/versions/{n}/restore` | History / restore into the draft |
+| POST | `/workflows/{id}/runs` | `{inputs, published?}` → a `Run` (`kind: "workflow"`); follow with `GET /runs/{id}/stream` |
+| GET | `/workflows/{id}/runs` | Recent runs (`output`, `status`, `inputs`) |
+
+Workflow runs emit `node.started` / `node.completed` (output preview, duration) / `node.failed`, then a terminal `run.completed` (with `output`), `run.failed` (`code: node_failed | timeout | …`), `run.cancelled` or `run.waiting_approval`. They use the same queue, worker, cancel, resume and approval endpoints as chat runs (an approval step creates an approval request with `tool_name: "workflow.approval"`; the continuation resumes after that node without re-running earlier steps).
+
 ### Knowledge & memory (V2)
 | Method | Path | Notes |
 |---|---|---|

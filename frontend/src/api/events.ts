@@ -11,8 +11,10 @@ interface EventBase {
 
 export interface RunStarted extends EventBase {
   type: "run.started";
-  agent_id: string;
-  model: string;
+  /** null for workflow runs. */
+  workflow_id?: string | null;
+  agent_id: string | null;
+  model: string | null;
   conversation_id: string | null;
   user_message_id: string | null;
 }
@@ -64,6 +66,8 @@ export interface RunCompleted extends EventBase {
   tool_call_count: number;
   usage: Record<string, number>;
   duration_ms: number;
+  /** Workflow runs: the result. */
+  output?: string | null;
 }
 
 export type RunFailureCode =
@@ -71,7 +75,8 @@ export type RunFailureCode =
   | "timeout"
   | "provider_error"
   | "model_no_tool_support"
-  | "internal_error";
+  | "internal_error"
+  | "node_failed";
 
 export interface RunFailed extends EventBase {
   type: "run.failed";
@@ -81,6 +86,27 @@ export interface RunFailed extends EventBase {
 
 export interface RunCancelled extends EventBase {
   type: "run.cancelled";
+}
+
+/** Workflow runs: node lifecycle. */
+export interface NodeStarted extends EventBase {
+  type: "node.started";
+  node_id: string;
+  node_type: string;
+  label: string;
+}
+
+export interface NodeCompleted extends EventBase {
+  type: "node.completed";
+  node_id: string;
+  output: string;
+  duration_ms: number;
+}
+
+export interface NodeFailed extends EventBase {
+  type: "node.failed";
+  node_id: string;
+  error: string;
 }
 
 /** A tool call was held for human approval (not executed). */
@@ -106,6 +132,9 @@ export type AgentEvent =
   | ToolCallCompleted
   | ToolCallFailed
   | ApprovalRequested
+  | NodeStarted
+  | NodeCompleted
+  | NodeFailed
   | RunCompleted
   | RunFailed
   | RunCancelled

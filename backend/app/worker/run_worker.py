@@ -17,6 +17,7 @@ import socket
 import uuid
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -26,7 +27,13 @@ from app.config import Settings
 from app.db.models import Run
 from app.runtime.events import TERMINAL_TYPES, AgentEvent
 from app.runtime.executor import AgentRun
-from app.services import approval_service, knowledge_service, run_queue, run_service
+from app.services import (
+    approval_service,
+    knowledge_service,
+    run_queue,
+    run_service,
+    workflow_service,
+)
 from app.services.provider_service import ProviderResolver
 from app.services.pubsub import RUNS_CHANNEL, listen
 from app.tools.registry import ToolRegistry
@@ -196,14 +203,26 @@ class RunWorker:
                 run = await session.get(Run, run_id)
                 if run is None:
                     return
-                agent_run = await run_service.prepare_agent_run(
-                    session,
-                    run,
-                    settings=self.settings,
-                    resolver=self.resolver,
-                    tools=self.tools,
-                    session_factory=self.session_factory,
-                )
+                kind = run.kind
+                agent_run: Any
+                if kind == "workflow":
+                    agent_run = await workflow_service.prepare_workflow_run(
+                        session,
+                        run,
+                        settings=self.settings,
+                        resolver=self.resolver,
+                        tools=self.tools,
+                        session_factory=self.session_factory,
+                    )
+                else:
+                    agent_run = await run_service.prepare_agent_run(
+                        session,
+                        run,
+                        settings=self.settings,
+                        resolver=self.resolver,
+                        tools=self.tools,
+                        session_factory=self.session_factory,
+                    )
                 cancel_requested = run.cancel_requested
         except Exception:
             logger.exception("Could not prepare run %s", run_id)
@@ -214,11 +233,11 @@ class RunWorker:
         try:
             if cancel_requested:  # cancelled between queueing and claiming
                 agent_run.cancel()
-            await self._drive(run_id, agent_run)
+            await self._drive(run_id, agent_run, kind)
         finally:
             self._active.pop(run_id, None)
 
-    async def _drive(self, run_id: uuid.UUID, agent_run: AgentRun) -> None:
+    async def _drive(self, run_id: uuid.UUID, agent_run: Any, kind: str = "agent") -> None:
         queue: asyncio.Queue[AgentEvent | None] = asyncio.Queue()  # None = end of stream
 
         async def pump() -> None:
@@ -239,7 +258,7 @@ class RunWorker:
                 events = [e for e in batch if e is not None]
                 ended = len(events) != len(batch)
                 if events and writable:
-                    writable = await self._write(run_id, agent_run, events)
+                    writable = await self._write(run_id, agent_run, events, kind)
                     if not writable:
                         agent_run.cancel()  # run/conversation deleted: stop working
                 if ended:
@@ -248,7 +267,7 @@ class RunWorker:
             await producer
 
     async def _write(
-        self, run_id: uuid.UUID, agent_run: AgentRun, events: list[AgentEvent]
+        self, run_id: uuid.UUID, agent_run: Any, events: list[AgentEvent], kind: str = "agent"
     ) -> bool:
         """Write one batch; returns False if the run no longer exists."""
         try:
@@ -258,9 +277,14 @@ class RunWorker:
                     run = await session.get(Run, run_id)
                     if run is None:
                         return False
-                    await run_service.apply_result(
-                        session, run, agent_run.result, self.settings.approval_ttl_s
-                    )
+                    if kind == "workflow":
+                        await workflow_service.apply_result(
+                            session, run, agent_run.result, self.settings.approval_ttl_s
+                        )
+                    else:
+                        await run_service.apply_result(
+                            session, run, agent_run.result, self.settings.approval_ttl_s
+                        )
                 await session.commit()
             return True
         except IntegrityError:

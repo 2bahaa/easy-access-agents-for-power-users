@@ -260,10 +260,10 @@ class ApprovalRequest(Base):
         ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
     )
     run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), index=True)
-    conversation_id: Mapped[uuid.UUID] = mapped_column(
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("conversations.id", ondelete="CASCADE")
     )
-    agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"))
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"))
     call_id: Mapped[str] = mapped_column(String(100))
     tool_name: Mapped[str] = mapped_column(String(64))
     args: Mapped[dict[str, Any]] = mapped_column(default=dict)
@@ -374,6 +374,40 @@ class Memory(Base):
     content: Mapped[str] = mapped_column(Text)
     embedding: Mapped[list[float] | None] = mapped_column(ARRAY(Float))
     run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("runs.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Workflow(TimestampMixin, Base):
+    """A visual workflow. `spec` is the (validated) draft; publishing freezes a version."""
+
+    __tablename__ = "workflows"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(100))
+    description: Mapped[str] = mapped_column(Text, default="")
+    spec: Mapped[dict[str, Any]] = mapped_column()
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+
+class WorkflowVersion(Base):
+    __tablename__ = "workflow_versions"
+    __table_args__ = (UniqueConstraint("workflow_id", "version"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    workflow_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workflows.id", ondelete="CASCADE"), index=True
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    spec: Mapped[dict[str, Any]] = mapped_column()
+    note: Mapped[str] = mapped_column(String(500), default="")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -535,12 +569,21 @@ class Run(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     workspace_id: Mapped[uuid.UUID] = _workspace_fk()
-    conversation_id: Mapped[uuid.UUID] = mapped_column(
+    # "agent" (a chat turn) or "workflow". Workflow runs have no conversation/agent.
+    kind: Mapped[str] = mapped_column(String(16), default="agent", server_default="agent")
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("conversations.id", ondelete="CASCADE"), index=True
     )
-    agent_id: Mapped[uuid.UUID] = mapped_column(
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("agents.id", ondelete="CASCADE"), index=True
     )
+    workflow_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workflows.id", ondelete="CASCADE"), index=True
+    )
+    inputs: Mapped[dict[str, Any] | None] = mapped_column()
+    output: Mapped[str | None] = mapped_column(Text)
+    # Workflow node outputs (kept so a paused workflow can resume).
+    state: Mapped[dict[str, Any] | None] = mapped_column()
     status: Mapped[str] = mapped_column(String(32), default="queued")
     agent_version: Mapped[int | None] = mapped_column(Integer)  # None = ran the draft
     # A continuation run executes the human decisions of the run it resumes.

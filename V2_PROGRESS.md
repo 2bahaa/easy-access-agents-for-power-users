@@ -12,8 +12,8 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 | 4 | Agent platform (versions, templates) & skills v2 | done | b206514 |
 | 5 | Tools & MCP | done | 46e5391 |
 | 6 | Human approval | done | 102a708 |
-| 7 | Knowledge & memory | done | (this commit) |
-| 8 | Visual workflows | pending | – |
+| 7 | Knowledge & memory | done | 1440a68 |
+| 8 | Visual workflows | done | (this commit) |
 | 9 | Multi-agent teams | pending | – |
 | 10 | Analytics & observability | pending | – |
 | 11 | SDK packaging | pending | – |
@@ -104,8 +104,18 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 - New dep (justified): `pypdf` (PDF text extraction, pure Python).
 - Tests: backend 283 passed / 2 skipped (+18: extraction/chunking/RRF, ingestion via the worker, hybrid search, failures, deletion, isolation, agent RAG with citations, private memory, backend parity); frontend 28 files / 153 passed (+4). ruff, format, mypy, typecheck, lint, build clean.
 
+### Phase 8 — Visual workflows
+- Backend-defined `WorkflowSpec` with 11 node types; strict server validation (structure, DAG, handles, configs, template/expression references, workspace references); the canvas JSON is never trusted.
+- Engine compiles specs to a LangGraph `StateGraph` (parallel fan-out + deferred joins, conditional edges, approval pause/resume, timeout, cancel), DB-free via an injected `WorkflowServices`; agent/LLM/tool/knowledge/memory nodes reuse the existing checks (`build_agent_run`, provider resolver, `ToolNode.run_single`).
+- Safe condition language (whitelisted AST; sandbox negative tests) and `{{ }}` templates.
+- Durable: workflow runs are `runs` rows (`kind="workflow"`) — same queue/worker/heartbeat/cancel/stream/resume; approval steps use the approval system and resume without re-running earlier nodes.
+- Studio: workflows list (blank/templates/import), React Flow editor (drag-and-drop palette + click-to-add, typed handles per branch, connection rules, inspector forms, undo/redo, copy/paste/duplicate/delete, auto-layout via dagre, minimap, server problems on nodes, export, publish, versions/restore) and a run panel with live node status, path highlighting, log and output. The editor is lazy-loaded (258 kB chunk).
+- Limitations (documented): no loops; an approval node inside a parallel branch resumes only its own branch; agent nodes cannot pause for tool approval (use an Approval node).
+- New deps (justified): `@xyflow/react` (maintained React Flow), `@dagrejs/dagre` (auto-layout).
+- Tests: backend 323 passed / 2 skipped (+40: spec validation matrix, expression sandbox, engine behaviours, API end-to-end through the worker incl. agent/tool nodes, approval continuation, RBAC/isolation, templates); frontend 30 files / 162 passed (+9: graph helpers, editor interactions, template creation, live run). ruff, format, mypy, typecheck, lint, build clean.
+
 ## Known issues
-- Frontend bundle is 574 kB (minified); route-level code splitting planned with the workflow editor (Phase 8).
+- Main frontend bundle is ~678 kB minified (203 kB gzip); the workflow editor is split out; further route splitting is a Phase 12 task.
 - Python text-mode writes on Windows produce CRLF; scripts now write bytes/LF (`.gitattributes` normalizes in git; `*.sh` must be LF for containers).
 - `uv` lives at `%APPDATA%\Python\Python314\Scripts\uv.exe` on this machine (not on PATH).
 

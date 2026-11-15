@@ -18,8 +18,8 @@ class ApprovalRead(BaseModel):
 
     id: uuid.UUID
     run_id: uuid.UUID
-    conversation_id: uuid.UUID
-    agent_id: uuid.UUID
+    conversation_id: uuid.UUID | None  # None for workflow approvals
+    agent_id: uuid.UUID | None
     call_id: str
     tool_name: str
     args: dict[str, Any]

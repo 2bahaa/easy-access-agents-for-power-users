@@ -99,7 +99,7 @@ export function runReducer(state: RunState, action: RunAction): RunState {
         ...state,
         runId: action.run_id,
         status: "streaming",
-        items: [...state.items, { kind: "started", seq: action.seq, model: action.model, ts: action.ts }],
+        items: [...state.items, { kind: "started", seq: action.seq, model: action.model ?? "workflow", ts: action.ts }],
       };
     case "reasoning.delta": {
       const last = state.items.at(-1);
