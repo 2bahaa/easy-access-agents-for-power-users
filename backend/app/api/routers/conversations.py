@@ -1,4 +1,5 @@
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, status
 from fastapi.responses import StreamingResponse
@@ -26,9 +27,14 @@ router = APIRouter(prefix="/conversations", tags=["conversations"])
 
 @router.get("")
 async def list_conversations(
-    principal: PrincipalDep, session: SessionDep, agent_id: uuid.UUID | None = None
+    principal: PrincipalDep,
+    session: SessionDep,
+    agent_id: uuid.UUID | None = None,
+    kind: Literal["chat", "playground"] = "chat",
 ) -> list[ConversationSummary]:
-    items = await conversation_service.list_conversations(session, principal.workspace_id, agent_id)
+    items = await conversation_service.list_conversations(
+        session, principal.workspace_id, agent_id, kind
+    )
     return [ConversationSummary.model_validate(c) for c in items]
 
 

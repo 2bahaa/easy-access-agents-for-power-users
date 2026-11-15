@@ -18,7 +18,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 NAMING_CONVENTION = {
@@ -235,6 +235,52 @@ class Skill(TimestampMixin, Base):
     description: Mapped[str] = mapped_column(Text, default="")
     content_md: Mapped[str] = mapped_column(Text, default="")
     is_builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+    category: Mapped[str] = mapped_column(String(50), default="general", server_default="general")
+    tags: Mapped[list[str]] = mapped_column(ARRAY(String(40)), default=list, server_default="{}")
+    # Incremented on every content change; earlier versions live in skill_versions.
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+
+
+class SkillVersion(Base):
+    """An earlier state of a skill (written before each change)."""
+
+    __tablename__ = "skill_versions"
+    __table_args__ = (UniqueConstraint("skill_id", "version"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    skill_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("skills.id", ondelete="CASCADE"), index=True
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    name: Mapped[str] = mapped_column(String(100))
+    description: Mapped[str] = mapped_column(Text, default="")
+    content_md: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AgentVersion(Base):
+    """An immutable published snapshot of an agent. The agent row itself is the draft."""
+
+    __tablename__ = "agent_versions"
+    __table_args__ = (UniqueConstraint("agent_id", "version"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agents.id", ondelete="CASCADE"), index=True
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    # The editable configuration (AgentWrite shape: skill ids, tool configs) for restore/diff.
+    write_config: Mapped[dict[str, Any]] = mapped_column()
+    # The resolved runtime configuration (AgentConfig incl. skill content) runs execute.
+    runtime_config: Mapped[dict[str, Any]] = mapped_column()
+    note: Mapped[str] = mapped_column(String(500), default="")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class AgentSkill(Base):
@@ -271,6 +317,8 @@ class Conversation(TimestampMixin, Base):
         ForeignKey("agents.id", ondelete="CASCADE"), index=True
     )
     title: Mapped[str] = mapped_column(String(200), default="New conversation")
+    # "chat" runs the agent's published version; "playground" always runs the draft.
+    kind: Mapped[str] = mapped_column(String(16), default="chat", server_default="chat")
 
 
 ACTIVE_RUN_STATUSES = ("queued", "running")
@@ -298,6 +346,7 @@ class Run(Base):
         ForeignKey("agents.id", ondelete="CASCADE"), index=True
     )
     status: Mapped[str] = mapped_column(String(32), default="queued")
+    agent_version: Mapped[int | None] = mapped_column(Integer)  # None = ran the draft
     agent_snapshot: Mapped[dict[str, Any]] = mapped_column(default=dict)
     tool_call_count: Mapped[int] = mapped_column(Integer, default=0)
     usage: Mapped[dict[str, Any]] = mapped_column(default=dict)

@@ -12,6 +12,7 @@ class RunRead(BaseModel):
     conversation_id: uuid.UUID
     agent_id: uuid.UUID
     status: str
+    agent_version: int | None = None  # None = ran the draft
     tool_call_count: int
     usage: dict[str, Any]
     error: str | None

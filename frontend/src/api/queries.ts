@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "./client";
-import type { AgentWrite, ProviderConnectionWrite, Role, SkillWrite } from "./types";
+import type { AgentExportDocument, AgentWrite, ProviderConnectionWrite, Role, SkillWrite } from "./types";
 
 export const keys = {
   health: ["health"] as const,
@@ -17,6 +17,10 @@ export const keys = {
   conversation: (id: string) => ["conversation", id] as const,
   runEvents: (runId: string) => ["runs", runId, "events"] as const,
   members: ["members"] as const,
+  agentVersions: (id: string) => ["agents", id, "versions"] as const,
+  agentTemplates: ["agent-templates"] as const,
+  skillTemplates: ["skill-templates"] as const,
+  skillVersions: (id: string) => ["skills", id, "versions"] as const,
   apiKeys: ["api-keys"] as const,
   audit: ["audit"] as const,
   workspaces: ["workspaces"] as const,
@@ -161,7 +165,7 @@ export const useRunEvents = (runId: string | undefined, enabled = true) =>
 export function useCreateConversation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: api.createConversation,
+    mutationFn: (agentId: string) => api.createConversation(agentId),
     onSuccess: (conversation) => {
       void qc.invalidateQueries({ queryKey: keys.conversations(conversation.agent_id) });
     },
@@ -232,4 +236,76 @@ export function useRevokeApiKey() {
 
 export function useCreateWorkspace() {
   return useMutation({ mutationFn: (name: string) => api.createWorkspace(name) });
+}
+
+// ---- agent platform ----
+
+export const useAgentTemplates = () =>
+  useQuery({ queryKey: keys.agentTemplates, queryFn: api.listAgentTemplates, staleTime: Infinity });
+
+export const useSkillTemplates = () =>
+  useQuery({ queryKey: keys.skillTemplates, queryFn: api.listSkillTemplates, staleTime: Infinity });
+
+export const useAgentVersions = (id: string | undefined) =>
+  useQuery({ queryKey: keys.agentVersions(id ?? ""), queryFn: () => api.listAgentVersions(id!), enabled: !!id });
+
+export const useSkillVersions = (id: string | undefined) =>
+  useQuery({ queryKey: keys.skillVersions(id ?? ""), queryFn: () => api.listSkillVersions(id!), enabled: !!id });
+
+export function usePublishAgent(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (note: string) => api.publishAgent(id, note),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.agent(id) });
+      void qc.invalidateQueries({ queryKey: keys.agentVersions(id) });
+    },
+  });
+}
+
+export function useRestoreAgentVersion(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (version: number) => api.restoreAgentVersion(id, version),
+    onSuccess: (agent) => qc.setQueryData(keys.agent(id), agent),
+  });
+}
+
+export function useDuplicateAgent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.duplicateAgent(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.agents }),
+  });
+}
+
+export function useImportAgent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (doc: AgentExportDocument) => api.importAgent(doc),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.agents });
+      void qc.invalidateQueries({ queryKey: keys.skills });
+    },
+  });
+}
+
+export function useRestoreSkillVersion(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (version: number) => api.restoreSkillVersion(id, version),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.skill(id) });
+      void qc.invalidateQueries({ queryKey: keys.skillVersions(id) });
+      void qc.invalidateQueries({ queryKey: keys.skills });
+    },
+  });
+}
+
+export function useImportSkill() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (markdown: string) => api.importSkill(markdown),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.skills }),
+  });
 }

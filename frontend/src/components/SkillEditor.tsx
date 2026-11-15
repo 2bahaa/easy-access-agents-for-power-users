@@ -33,6 +33,13 @@ export function SkillEditor({
   const [errors, setErrors] = useState<SkillFormErrors>({});
   const dirty = JSON.stringify(values) !== JSON.stringify(initialValues);
 
+  const [tagInput, setTagInput] = useState((initialValues.tags ?? []).join(", "));
+  const setTags = (raw: string) => {
+    setTagInput(raw);
+    const tags = [...new Set(raw.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean))];
+    setValues((v) => ({ ...v, tags }));
+  };
+
   const set = (key: keyof SkillWrite, value: string) =>
     setValues((v) => ({
       ...v,
@@ -90,6 +97,21 @@ export function SkillEditor({
                 className="font-mono text-[13px]"
               />
             )}
+          </Field>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Category" hint="Groups skills in the library.">
+            {(a11y) => (
+              <Input
+                {...a11y}
+                value={values.category ?? "general"}
+                maxLength={50}
+                onChange={(e) => set("category", e.target.value)}
+              />
+            )}
+          </Field>
+          <Field label="Tags" hint="Comma-separated, e.g. writing, tone">
+            {(a11y) => <Input {...a11y} value={tagInput} onChange={(e) => setTags(e.target.value)} />}
           </Field>
         </div>
         <Field label="Description" error={errors.description} hint="Shown when picking skills.">

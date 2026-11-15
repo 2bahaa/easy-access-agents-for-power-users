@@ -8,8 +8,8 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 | 1 | Design system & app shell | done | 593469d |
 | 2a | Durable runtime (queue, worker, resume) | done | 720b452 |
 | 2b | Auth, users, workspaces, tenancy, audit | done | 84dc4f8 |
-| 3 | Multi-provider | done | (this commit) |
-| 4 | Agent platform (versions, templates) & skills v2 | pending | – |
+| 3 | Multi-provider | done | a5641fb |
+| 4 | Agent platform (versions, templates) & skills v2 | done | (this commit) |
 | 5 | Tools & MCP | pending | – |
 | 6 | Human approval | pending | – |
 | 7 | Knowledge & memory | pending | – |
@@ -69,6 +69,14 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 - Tests: backend 227 passed / 2 skipped (+36: adapter contract tests with recorded responses for all providers, crypto/rotation, SSRF guard, connection isolation/RBAC/secrets, overrides, probe, unknown-capability refusal); frontend 23 files / 128 passed (+8). ruff, format, mypy, typecheck, lint, build clean.
 - Live check (manual): the real OpenAI-compatible adapter against local Ollama `/v1` — discovery (tool support reported as unknown, correctly), streaming with token usage, and a real `ping` tool call (`llama3.2:1b`).
 - Not verifiable here: live calls to OpenAI/Anthropic/Gemini (no API keys on this machine) — covered by recorded-response contract tests; manual check with real keys recommended.
+
+### Phase 4 — Agent platform & skills v2
+- Draft/published model: the agent row is the draft; `publish` freezes an immutable version (editable + resolved runtime config, skill text included). Chats run the latest published version (unpublished agents keep running their draft — backward compatible); playground conversations always run the draft and stay out of the history. Runs record `agent_version`.
+- Version history with field-level diff against the draft and restore-to-draft; duplicate; templates (code-defined, model chosen by the user); portable `eaa.agent/v1` export/import (no ids/secrets; atomic validation; skills reused by slug; connection by name).
+- Skills v2: category, tags, search/filter, automatic versioning on content changes with restore, Markdown export/import, built-in skill templates.
+- Provider connections pinned by a published version cannot be deleted.
+- Studio: status badge, Test (playground sheet), Publish dialog, History sheet (compare/restore), Duplicate, Export in the editor; template picker and JSON import on the agents list; skills page with tags/category, import/export, templates and history.
+- Tests: backend 238 passed / 2 skipped (+11 platform tests incl. frozen-skill behaviour, playground vs chat, atomic import, isolation/RBAC); frontend 25 files / 139 passed (+11). ruff, format, mypy, typecheck, lint, build clean.
 
 ## Known issues
 - Frontend bundle is 574 kB (minified); route-level code splitting planned with the workflow editor (Phase 8).

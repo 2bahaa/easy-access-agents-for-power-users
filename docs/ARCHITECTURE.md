@@ -111,6 +111,8 @@ easy-access-agents/
 
 ## 5. Database schema
 
+**Agent versions & skills v2 (V2, migration `0005`):** `agent_versions(agent_id, version, write_config, runtime_config, note, created_by)` — the `agents` row is the draft; a published version is immutable and carries the resolved runtime config (skill text frozen). `conversations.kind` (`chat` | `playground`), `runs.agent_version`. `skills` gain `category`, `tags text[]`, `version`; `skill_versions` keeps earlier states.
+
 **Tenancy (V2, migration `0003`):** `organizations` → `workspaces` (globally unique immutable `slug`, also the workspace's file-sandbox folder `WORKSPACE_DIR/<slug>/`); `users` (lower-cased unique email, argon2id `password_hash`); `memberships(org_id, user_id, role)`; `api_keys` (SHA-256 hash + lookup prefix, role ≤ creator's, optional expiry, revocation); `refresh_tokens` (hash, `family_id` for reuse detection); `audit_log` (append-only, written in the same transaction as the action). `agents`, `skills`, `conversations` and `runs` carry `workspace_id` (FK, cascade); skill slugs are unique per workspace. Pre-existing data was moved into the Default organization/workspace (`slug = default`).
 
 | Table | Columns | Notes |

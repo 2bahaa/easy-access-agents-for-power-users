@@ -1,9 +1,13 @@
-import { Bot, Cpu, MessageSquare, Plus, Search } from "lucide-react";
+import { Bot, Cpu, MessageSquare, Plus, Search, Upload } from "lucide-react";
 import { useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 
 import { errorMessage } from "../../api/client";
-import { useAgents } from "../../api/queries";
+import { useAgents, useImportAgent } from "../../api/queries";
+import type { AgentExportDocument } from "../../api/types";
+import { Button } from "../../components/ui/Button";
+import { buttonClasses } from "../../components/ui/buttonStyles";
+import { useToast } from "../../components/ui/toast-context";
 import { LinkButton } from "../../components/ui/LinkButton";
 import { Card } from "../../components/ui/Card";
 import { Input } from "../../components/ui/Field";
@@ -11,10 +15,33 @@ import { EmptyState, ErrorState, Skeleton } from "../../components/ui/States";
 import { PageHeader } from "../../layout/PageHeader";
 import { relativeTime } from "../../lib/format";
 import { AgentAvatar } from "./AgentAvatar";
+import { NewAgentDialog } from "./NewAgentDialog";
 
 export function AgentsPage() {
   const { data: agents, isPending, isError, error, refetch } = useAgents();
   const [query, setQuery] = useState("");
+  const [creating, setCreating] = useState(false);
+  const navigate = useNavigate();
+  const toast = useToast();
+  const importAgent = useImportAgent();
+
+  const importFile = async (file: File) => {
+    try {
+      const doc = JSON.parse(await file.text()) as AgentExportDocument;
+      const result = await importAgent.mutateAsync(doc);
+      toast.push({
+        title: "Agent imported",
+        description: result.created_skills.length ? `New skills: ${result.created_skills.join(", ")}` : undefined,
+      });
+      navigate(`/agents/${result.agent_id}`);
+    } catch (error) {
+      toast.push({
+        tone: "error",
+        title: "Import failed",
+        description: error instanceof SyntaxError ? "The file is not valid JSON." : errorMessage(error),
+      });
+    }
+  };
   const filtered = (agents ?? []).filter((a) =>
     `${a.name} ${a.description} ${a.model}`.toLowerCase().includes(query.toLowerCase()),
   );
@@ -25,10 +52,26 @@ export function AgentsPage() {
         title="Agents"
         description="Create agents, give them skills and tools, and choose the model they run on."
         actions={
-          <LinkButton to="/agents/new" variant="primary" icon={<Plus className="size-4" />
-              }>
+          <>
+            <label className={buttonClasses({ variant: "secondary" })}>
+              <Upload className="size-4" />
+              <span className="hidden sm:inline">Import</span>
+              <input
+                type="file"
+                accept="application/json,.json"
+                className="sr-only"
+                aria-label="Import agent from JSON"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file) void importFile(file);
+                }}
+              />
+            </label>
+            <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setCreating(true)}>
               New agent
-            </LinkButton>
+            </Button>
+          </>
         }
       />
 
@@ -125,6 +168,7 @@ export function AgentsPage() {
           )}
         </>
       )}
+      {creating && <NewAgentDialog onClose={() => setCreating(false)} />}
     </>
   );
 }

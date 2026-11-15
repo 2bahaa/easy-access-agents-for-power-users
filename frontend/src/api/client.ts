@@ -19,6 +19,12 @@ import type {
   ToolInfo,
   ProbeResult,
   ProviderConnectionWrite,
+  AgentExportDocument,
+  AgentTemplate,
+  AgentVersion,
+  AgentVersionSummary,
+  ImportResult,
+  SkillVersion,
   ApiKey,
   ApiKeyCreated,
   AuditEntry,
@@ -164,14 +170,37 @@ export const api = {
   listConversations: (agentId: string) =>
     request<ConversationSummary[]>(`/conversations?agent_id=${encodeURIComponent(agentId)}`),
   getConversation: (id: string) => request<Conversation>(`/conversations/${id}`),
-  createConversation: (agentId: string) =>
-    request<ConversationSummary>("/conversations", json("POST", { agent_id: agentId })),
+  createConversation: (agentId: string, playground = false) =>
+    request<ConversationSummary>("/conversations", json("POST", { agent_id: agentId, playground })),
   deleteConversation: (id: string) => request<void>(`/conversations/${id}`, { method: "DELETE" }),
 
   getRun: (id: string) => request<Run>(`/runs/${id}`),
   listRunEvents: (id: string) => request<RunEventRecord[]>(`/runs/${id}/events`),
   cancelRun: (id: string) => request<void>(`/runs/${id}/cancel`, { method: "POST" }),
   listProviders: () => request<ProviderInfo[]>("/providers"),
+
+  // ---- agent platform ----
+  listAgentTemplates: () => request<AgentTemplate[]>("/agent-templates"),
+  duplicateAgent: (id: string, name?: string) =>
+    request<Agent>(`/agents/${id}/duplicate`, json("POST", name ? { name } : {})),
+  exportAgent: (id: string) => request<AgentExportDocument>(`/agents/${id}/export`),
+  importAgent: (doc: AgentExportDocument) => request<ImportResult>("/agents/import", json("POST", doc)),
+  publishAgent: (id: string, note: string) =>
+    request<AgentVersionSummary>(`/agents/${id}/publish`, json("POST", { note })),
+  listAgentVersions: (id: string) => request<AgentVersionSummary[]>(`/agents/${id}/versions`),
+  getAgentVersion: (id: string, version: number) => request<AgentVersion>(`/agents/${id}/versions/${version}`),
+  restoreAgentVersion: (id: string, version: number) =>
+    request<Agent>(`/agents/${id}/versions/${version}/restore`, { method: "POST" }),
+  listSkillTemplates: () => request<SkillWrite[]>("/skill-templates"),
+  listSkillVersions: (id: string) => request<SkillVersion[]>(`/skills/${id}/versions`),
+  restoreSkillVersion: (id: string, version: number) =>
+    request<Skill>(`/skills/${id}/versions/${version}/restore`, { method: "POST" }),
+  exportSkill: async (id: string): Promise<string> => {
+    const response = await authFetch(`${API_BASE_URL}/skills/${id}/export`, { headers: { Accept: "text/plain" } });
+    if (!response.ok) throw await toApiError(response);
+    return response.text();
+  },
+  importSkill: (markdown: string) => request<Skill>("/skills/import", json("POST", { markdown })),
 
   // ---- auth & organization ----
   login: (email: string, password: string) =>

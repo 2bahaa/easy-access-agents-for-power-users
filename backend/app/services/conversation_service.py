@@ -15,11 +15,14 @@ DEFAULT_TITLE = "New conversation"
 
 
 async def list_conversations(
-    session: AsyncSession, workspace_id: uuid.UUID, agent_id: uuid.UUID | None = None
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    agent_id: uuid.UUID | None = None,
+    kind: str = "chat",
 ) -> Sequence[Conversation]:
     stmt = (
         select(Conversation)
-        .where(Conversation.workspace_id == workspace_id)
+        .where(Conversation.workspace_id == workspace_id, Conversation.kind == kind)
         .order_by(Conversation.updated_at.desc())
     )
     if agent_id is not None:
@@ -57,6 +60,7 @@ async def create_conversation(
         workspace_id=principal.workspace_id,
         agent_id=data.agent_id,
         title=data.title or DEFAULT_TITLE,
+        kind="playground" if data.playground else "chat",
     )
     session.add(conversation)
     await session.commit()

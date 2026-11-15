@@ -12,6 +12,8 @@ class ConversationCreate(BaseModel):
 
     agent_id: uuid.UUID
     title: str | None = Field(default=None, min_length=1, max_length=200)
+    # Playground conversations test the agent's draft and are hidden from the history.
+    playground: bool = False
 
 
 class ConversationSummary(BaseModel):
@@ -20,6 +22,7 @@ class ConversationSummary(BaseModel):
     id: uuid.UUID
     agent_id: uuid.UUID
     title: str
+    kind: str = "chat"
     created_at: datetime
     updated_at: datetime
 

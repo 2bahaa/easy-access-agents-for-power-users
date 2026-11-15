@@ -1,11 +1,13 @@
-import { MessageSquare, Plus, Trash2 } from "lucide-react";
+import { Copy, Download, FlaskConical, History, MessageSquare, Plus, Rocket, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 
-import { ApiError, errorMessage } from "../../api/client";
+import { api, ApiError, errorMessage } from "../../api/client";
 import {
   useAgent,
+  useAgentTemplates,
   useDeleteAgent,
+  useDuplicateAgent,
   useModels,
   useProviders,
   useSaveAgent,
@@ -20,8 +22,10 @@ import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { ErrorState, Skeleton } from "../../components/ui/States";
 import { useToast } from "../../components/ui/toast-context";
 import { PageHeader } from "../../layout/PageHeader";
-import { emptyAgentForm, fromAgent } from "../../lib/agentForm";
+import { emptyAgentForm, fromAgent, toAgentWrite } from "../../lib/agentForm";
+import { slugify } from "../../lib/format";
 import { AgentAvatar } from "./AgentAvatar";
+import { AgentStatusBadge, PlaygroundSheet, PublishDialog, VersionsSheet } from "./AgentLifecycle";
 
 export function AgentEditorPage() {
   const { agentId } = useParams();
@@ -40,10 +44,44 @@ export function AgentEditorPage() {
   const remove = useDeleteAgent();
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const initialValues = useMemo(
-    () => (agent.data ? fromAgent(agent.data) : emptyAgentForm()),
-    [agent.data],
-  );
+  const [params] = useSearchParams();
+  const templates = useAgentTemplates();
+  const template = isNew ? templates.data?.find((t) => t.id === params.get("template")) : undefined;
+  const [sheet, setSheet] = useState<"publish" | "versions" | "playground" | null>(null);
+  const duplicate = useDuplicateAgent();
+
+  const initialValues = useMemo(() => {
+    if (agent.data) return fromAgent(agent.data);
+    const base = emptyAgentForm();
+    if (!template) return base;
+    const suggested = (skills.data ?? []).filter((s) => template.suggested_skills.includes(s.slug)).map((s) => s.id);
+    return {
+      ...base,
+      name: template.name,
+      description: template.description,
+      systemPrompt: template.system_prompt,
+      tools: template.tools.map((t) => ({ name: t.name, config: { ...t.config } })),
+      temperature: template.model_params.temperature ?? null,
+      maxToolCalls: template.max_tool_calls,
+      runTimeoutS: template.run_timeout_s,
+      skillIds: suggested,
+    };
+  }, [agent.data, template, skills.data]);
+
+  const exportJson = async () => {
+    if (!agentId) return;
+    try {
+      const doc = await api.exportAgent(agentId);
+      const url = URL.createObjectURL(new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${slugify(agent.data?.name ?? "agent")}.agent.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.push({ tone: "error", title: "Export failed", description: errorMessage(error) });
+    }
+  };
 
   const loading = (!isNew && agent.isPending) || skills.isPending || tools.isPending;
   const loadError = agent.error ?? skills.error ?? tools.error;
@@ -93,20 +131,48 @@ export function AgentEditorPage() {
           )
         }
         description={
-          isNew
-            ? "Configure the model, instructions, skills and tools, then save."
-            : "Edit configuration. Changes apply to new runs."
+          isNew ? (
+            template ? `Started from the "${template.name}" template — choose a model and save.` : "Configure the model, instructions, skills and tools, then save."
+          ) : agent.data ? (
+            <span className="flex flex-wrap items-center gap-2">
+              <AgentStatusBadge agent={agent.data} />
+              <span>You edit the draft; publish to update chats.</span>
+            </span>
+          ) : null
         }
         actions={
           !isNew &&
-          agentId && (
-            <LinkButton
-              to={`/agents/${agentId}/chat`}
-              variant="primary"
-              icon={<MessageSquare className="size-4" />}
-            >
-              Open chat
-            </LinkButton>
+          agentId &&
+          agent.data && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button icon={<FlaskConical className="size-4" />} onClick={() => setSheet("playground")}>
+                Test
+              </Button>
+              <Button icon={<History className="size-4" />} onClick={() => setSheet("versions")} aria-label="Version history">
+                <span className="hidden md:inline">History</span>
+              </Button>
+              <Button
+                icon={<Copy className="size-4" />}
+                aria-label="Duplicate agent"
+                loading={duplicate.isPending}
+                onClick={() =>
+                  duplicate.mutate(agentId, {
+                    onSuccess: (copy) => {
+                      toast.push({ title: "Agent duplicated", description: copy.name });
+                      navigate(`/agents/${copy.id}`);
+                    },
+                    onError: (error) => toast.push({ tone: "error", title: "Could not duplicate", description: errorMessage(error) }),
+                  })
+                }
+              />
+              <Button icon={<Download className="size-4" />} aria-label="Export agent" onClick={() => void exportJson()} />
+              <Button variant="primary" icon={<Rocket className="size-4" />} onClick={() => setSheet("publish")}>
+                Publish
+              </Button>
+              <LinkButton to={`/agents/${agentId}/chat`} icon={<MessageSquare className="size-4" />}>
+                Chat
+              </LinkButton>
+            </div>
           )
         }
       />
@@ -128,7 +194,7 @@ export function AgentEditorPage() {
 
       {!loading && !loadError && skills.data && tools.data && (
         <AgentBuilder
-          key={agent.data?.updated_at ?? "new"}
+          key={agent.data?.updated_at ?? `new-${template?.id ?? ""}`}
           initialValues={initialValues}
           isNew={isNew}
           providers={providers.data}
@@ -163,6 +229,16 @@ export function AgentEditorPage() {
           }
         />
       )}
+
+      {agent.data && sheet === "publish" && <PublishDialog agent={agent.data} onClose={() => setSheet(null)} />}
+      {agent.data && sheet === "versions" && (
+        <VersionsSheet
+          agent={agent.data}
+          draft={toAgentWrite(fromAgent(agent.data)) as unknown as Record<string, unknown>}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {agent.data && sheet === "playground" && <PlaygroundSheet agent={agent.data} onClose={() => setSheet(null)} />}
 
       <ConfirmDialog
         open={confirmDelete}

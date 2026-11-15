@@ -5,22 +5,38 @@ import uuid
 from collections.abc import Sequence
 from pathlib import Path
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Skill, Workspace
+from app.db.models import Skill, SkillVersion, Workspace
 from app.schemas.skills import SkillWrite
-from app.services.errors import ConflictError, NotFoundError
+from app.services.errors import ConflictError, DomainValidationError, NotFoundError
 from app.services.principal import Principal
-from app.skills.loader import load_skill_files
+from app.skills.loader import SkillFileError, load_skill_files, parse_skill_markdown
 
 logger = logging.getLogger(__name__)
 
 
-async def list_skills(session: AsyncSession, workspace_id: uuid.UUID) -> Sequence[Skill]:
-    stmt = select(Skill).where(Skill.workspace_id == workspace_id).order_by(Skill.name)
-    return (await session.scalars(stmt)).all()
+async def list_skills(
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    *,
+    q: str | None = None,
+    tag: str | None = None,
+    category: str | None = None,
+) -> Sequence[Skill]:
+    stmt = select(Skill).where(Skill.workspace_id == workspace_id)
+    if q:
+        like = f"%{q.strip()}%"
+        stmt = stmt.where(
+            or_(Skill.name.ilike(like), Skill.description.ilike(like), Skill.slug.ilike(like))
+        )
+    if tag:
+        stmt = stmt.where(Skill.tags.contains([tag.strip().lower()]))
+    if category:
+        stmt = stmt.where(Skill.category == category)
+    return (await session.scalars(stmt.order_by(Skill.name))).all()
 
 
 async def get_skill(session: AsyncSession, skill_id: uuid.UUID, workspace_id: uuid.UUID) -> Skill:
@@ -63,6 +79,23 @@ async def update_skill(
     principal.require("editor")
     skill = await get_skill(session, skill_id, principal.workspace_id)
     await _ensure_slug_free(session, principal.workspace_id, data.slug, exclude_id=skill_id)
+    content_changed = (skill.name, skill.description, skill.content_md) != (
+        data.name,
+        data.description,
+        data.content_md,
+    )
+    if content_changed:  # keep the previous state, then bump the version
+        session.add(
+            SkillVersion(
+                skill_id=skill.id,
+                version=skill.version,
+                name=skill.name,
+                description=skill.description,
+                content_md=skill.content_md,
+                created_by=principal.user_id,
+            )
+        )
+        skill.version += 1
     for field, value in data.model_dump().items():
         setattr(skill, field, value)
     skill.updated_at = func.now()
@@ -103,3 +136,62 @@ async def seed_builtin_skills(
     if added:
         logger.info("Seeded %d built-in skill(s)", len(added))
     return len(added)
+
+
+async def list_versions(
+    session: AsyncSession, principal: Principal, skill_id: uuid.UUID
+) -> Sequence[SkillVersion]:
+    await get_skill(session, skill_id, principal.workspace_id)
+    stmt = (
+        select(SkillVersion)
+        .where(SkillVersion.skill_id == skill_id)
+        .order_by(SkillVersion.version.desc())
+    )
+    return (await session.scalars(stmt)).all()
+
+
+async def restore_version(
+    session: AsyncSession, principal: Principal, skill_id: uuid.UUID, version: int
+) -> Skill:
+    """Make an earlier version current again (recorded as a new version)."""
+    skill = await get_skill(session, skill_id, principal.workspace_id)
+    old = await session.scalar(
+        select(SkillVersion).where(
+            SkillVersion.skill_id == skill_id, SkillVersion.version == version
+        )
+    )
+    if old is None:
+        raise NotFoundError(f"Version {version} of skill {skill_id} not found")
+    data = SkillWrite(
+        slug=skill.slug,
+        name=old.name,
+        description=old.description,
+        content_md=old.content_md,
+        category=skill.category,
+        tags=list(skill.tags),
+    )
+    return await update_skill(session, principal, skill_id, data)
+
+
+def to_write(skill: Skill) -> SkillWrite:
+    return SkillWrite(
+        slug=skill.slug,
+        name=skill.name,
+        description=skill.description,
+        content_md=skill.content_md,
+        category=skill.category,
+        tags=list(skill.tags),
+    )
+
+
+async def import_markdown(session: AsyncSession, principal: Principal, markdown: str) -> Skill:
+    try:
+        data = parse_skill_markdown(markdown, source="import")
+    except SkillFileError as e:
+        raise DomainValidationError(str(e)) from e
+    return await create_skill(session, principal, data)
+
+
+def templates(directory: Path) -> list[SkillWrite]:
+    """Built-in skill files, offered as starting points for new skills."""
+    return load_skill_files(directory)

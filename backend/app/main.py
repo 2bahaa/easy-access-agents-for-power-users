@@ -92,6 +92,8 @@ def create_app(
     register_error_handlers(app)
     for module in (health, auth, org, agents, skills, tools, providers, conversations, runs):
         app.include_router(module.router, prefix="/api")
+    app.include_router(agents.templates_router, prefix="/api")
+    app.include_router(skills.templates_router, prefix="/api")
     return app
 
 

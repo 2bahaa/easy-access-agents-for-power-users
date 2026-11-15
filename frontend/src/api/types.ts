@@ -50,6 +50,10 @@ export interface AgentSummary {
 }
 
 export interface Agent extends AgentSummary {
+  /** Latest published version (null = never published); chats run it. */
+  published_version?: number | null;
+  /** True when the draft differs from the latest published version. */
+  has_unpublished_changes?: boolean;
   model_params: ModelParams;
   system_prompt: string;
   skills: SkillRef[];
@@ -60,6 +64,8 @@ export interface Agent extends AgentSummary {
 }
 
 export interface SkillWrite {
+  category?: string;
+  tags?: string[];
   slug: string;
   name: string;
   description: string;
@@ -72,6 +78,9 @@ export interface SkillSummary {
   name: string;
   description: string;
   is_builtin: boolean;
+  category?: string;
+  tags?: string[];
+  version?: number;
   updated_at: string;
 }
 
@@ -165,6 +174,7 @@ export interface ConversationSummary {
   id: string;
   agent_id: string;
   title: string;
+  kind?: "chat" | "playground";
   created_at: string;
   updated_at: string;
 }
@@ -270,5 +280,54 @@ export interface AuditEntry {
   target_type: string | null;
   target_id: string | null;
   meta: Record<string, unknown>;
+  created_at: string;
+}
+
+// ---- agent platform (versions, templates, import/export) ----
+
+export interface AgentVersionSummary {
+  version: number;
+  note: string;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface AgentVersion extends AgentVersionSummary {
+  write_config: AgentWrite;
+}
+
+export interface AgentTemplate {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  system_prompt: string;
+  tools: ToolSelection[];
+  model_params: ModelParams;
+  max_tool_calls: number;
+  run_timeout_s: number;
+  suggested_skills: string[];
+}
+
+/** Portable agent definition ("eaa.agent/v1"): no ids, secrets or conversations. */
+export interface AgentExportDocument {
+  format: "eaa.agent/v1";
+  exported_at?: string | null;
+  agent: Record<string, unknown>;
+  skills: Array<Record<string, unknown>>;
+}
+
+export interface ImportResult {
+  agent_id: string;
+  created_skills: string[];
+  reused_skills: string[];
+}
+
+export interface SkillVersion {
+  version: number;
+  name: string;
+  description: string;
+  content_md: string;
+  created_by: string | null;
   created_at: string;
 }

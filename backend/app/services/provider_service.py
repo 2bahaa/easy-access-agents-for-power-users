@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.crypto import SecretBox, SecretDecryptionError, SecretsNotConfiguredError, secret_hint
-from app.db.models import Agent, ModelCapabilityOverride, ProviderConnection
+from app.db.models import Agent, AgentVersion, ModelCapabilityOverride, ProviderConnection
 from app.runtime.providers.base import ModelCapabilities, ModelInfo, Provider, ProviderError
 from app.runtime.providers.cloud import ProviderSpec
 from app.runtime.providers.registry import ProviderRegistry, UnknownProviderError, build_provider
@@ -320,8 +320,15 @@ async def delete_connection(
     used_by = await session.scalar(
         select(func.count()).select_from(Agent).where(Agent.connection_id == connection_id)
     )
-    if used_by:
-        raise ConflictError(f"{used_by} agent(s) use this provider; switch them to another first")
+    pinned = await session.scalar(
+        select(func.count())
+        .select_from(AgentVersion)
+        .where(AgentVersion.runtime_config["connection_id"].astext == str(connection_id))
+    )
+    if used_by or pinned:
+        raise ConflictError(
+            "Agents (or their published versions) use this provider; switch them first"
+        )
     await session.execute(
         delete(ModelCapabilityOverride).where(
             ModelCapabilityOverride.workspace_id == principal.workspace_id,

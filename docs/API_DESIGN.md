@@ -95,6 +95,22 @@ Save-time checks: unknown tool / invalid tool config / unknown provider / limits
 |---|---|---|
 | GET | `/tools` | `ToolInfo[]`: `{name, description, args_schema, config_schema, timeout_s}` (JSON Schemas) |
 
+### Agent platform (V2)
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/agent-templates` | Built-in templates (prefill only; the user picks the model) |
+| POST | `/agents/{id}/publish` | `{note}` → freezes the draft as version n+1 (editable config + resolved runtime config incl. skill text) (editor) |
+| GET | `/agents/{id}/versions`, `/agents/{id}/versions/{n}` | History / one version with its `write_config` |
+| POST | `/agents/{id}/versions/{n}/restore` | Copy a version into the draft (skills deleted since are dropped); publish to make it live |
+| POST | `/agents/{id}/duplicate` | `{name?}` → new agent "Copy of …" (unpublished) |
+| GET | `/agents/{id}/export` | `eaa.agent/v1` document: agent config + embedded skills; no ids, secrets or conversations; the provider connection by name |
+| POST | `/agents/import` | Validates everything first (no partial imports); skills matched by slug (reused, never overwritten), connection by name (422 if missing) |
+
+`AgentRead` adds `published_version` and `has_unpublished_changes`. Chat conversations run the latest published version (or the draft if never published); `POST /conversations {playground: true}` creates a playground conversation that always runs the draft and is excluded from `GET /conversations` (use `?kind=playground`). Runs report `agent_version` (null = draft).
+
+### Skills v2
+`SkillWrite` adds `category` and `tags` (≤10, lower-cased). `GET /skills?q=&tag=&category=` filters. Changing name/description/content bumps `version` and stores the previous state: `GET /skills/{id}/versions`, `POST /skills/{id}/versions/{n}/restore` (recorded as a new version). `GET /skills/{id}/export` → Markdown with YAML frontmatter; `POST /skills/import {markdown}`; `GET /skill-templates` lists the built-in skill files.
+
 ### Providers (V2)
 
 `{provider}` is a built-in name (`ollama`) or a connection id. Secrets are write-only (encrypted with `SECRET_ENCRYPTION_KEY`); responses expose `has_secret` and `secret_hint` (last 4 chars) only.

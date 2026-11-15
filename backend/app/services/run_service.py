@@ -31,7 +31,13 @@ from app.runtime.types import (
     SkillContent,
     ToolGrant,
 )
-from app.services import agent_service, audit_service, conversation_service, run_queue
+from app.services import (
+    agent_platform,
+    agent_service,
+    audit_service,
+    conversation_service,
+    run_queue,
+)
 from app.services.errors import ConflictError, NotFoundError
 from app.services.principal import Principal
 from app.services.provider_service import ProviderResolver
@@ -187,7 +193,9 @@ async def start_run(
         raise ConflictError("A run is already in progress for this conversation")
 
     agent = await agent_service.get_agent(session, conversation.agent_id, ws)
-    config = to_agent_config(agent)
+    config, agent_version = await agent_platform.runtime_config_for_chat(
+        session, agent, playground=conversation.kind == "playground"
+    )
     await resolver.resolve(session, ws, config.provider, config.connection_id)  # 404/422 early
 
     user_message = Message(
@@ -201,6 +209,7 @@ async def start_run(
         conversation_id=conversation_id,
         agent_id=agent.id,
         status="queued",
+        agent_version=agent_version,
         agent_snapshot=config.model_dump(mode="json"),
     )
     session.add_all([user_message, run])

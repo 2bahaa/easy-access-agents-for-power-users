@@ -72,6 +72,9 @@ class AgentSummary(BaseModel):
 
 
 class AgentRead(AgentSummary):
+    # Latest published version (None = never published) and whether the draft differs.
+    published_version: int | None = None
+    has_unpublished_changes: bool = True
     model_params: ModelParams
     system_prompt: str
     skills: list[SkillRef]

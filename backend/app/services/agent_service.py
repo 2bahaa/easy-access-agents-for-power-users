@@ -57,7 +57,7 @@ async def get_agent(session: AsyncSession, agent_id: uuid.UUID, workspace_id: uu
     return agent
 
 
-def _check_limits(data: AgentWrite, settings: Settings) -> None:
+def check_limits(data: AgentWrite, settings: Settings) -> None:
     if data.max_tool_calls > settings.max_tool_calls_cap:
         raise DomainValidationError(
             f"max_tool_calls must be <= {settings.max_tool_calls_cap} (global cap)"
@@ -81,7 +81,7 @@ async def _resolve_skills(
     return skills
 
 
-def _validate_tools(data: AgentWrite, registry: ToolRegistry) -> dict[str, dict[str, Any]]:
+def validate_tools(data: AgentWrite, registry: ToolRegistry) -> dict[str, dict[str, Any]]:
     """Return {tool_name: canonical config}; raise 422 for unknown tools or bad configs."""
     configs: dict[str, dict[str, Any]] = {}
     for sel in data.tools:
@@ -94,7 +94,7 @@ def _validate_tools(data: AgentWrite, registry: ToolRegistry) -> dict[str, dict[
     return configs
 
 
-async def _check_provider_and_model(
+async def check_provider_and_model(
     session: AsyncSession, principal: Principal, data: AgentWrite, resolver: ProviderResolver
 ) -> str:
     """Resolve the agent's provider (workspace-scoped) and return its kind."""
@@ -176,9 +176,9 @@ async def create_agent(
     resolver: ProviderResolver,
 ) -> Agent:
     principal.require("editor")
-    _check_limits(data, settings)
-    tool_configs = _validate_tools(data, registry)
-    kind = await _check_provider_and_model(session, principal, data, resolver)
+    check_limits(data, settings)
+    tool_configs = validate_tools(data, registry)
+    kind = await check_provider_and_model(session, principal, data, resolver)
     skills = await _resolve_skills(session, data.skill_ids, principal.workspace_id)
     agent = Agent(workspace_id=principal.workspace_id, skill_links=[], tool_links=[])
     _apply(agent, data, kind, skills, tool_configs)
@@ -198,9 +198,9 @@ async def update_agent(
 ) -> Agent:
     principal.require("editor")
     agent = await get_agent(session, agent_id, principal.workspace_id)
-    _check_limits(data, settings)
-    tool_configs = _validate_tools(data, registry)
-    kind = await _check_provider_and_model(session, principal, data, resolver)
+    check_limits(data, settings)
+    tool_configs = validate_tools(data, registry)
+    kind = await check_provider_and_model(session, principal, data, resolver)
     skills = await _resolve_skills(session, data.skill_ids, principal.workspace_id)
     _apply(agent, data, kind, skills, tool_configs)
     agent.updated_at = func.now()
