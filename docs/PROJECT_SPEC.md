@@ -1,7 +1,7 @@
 # Project Specification
 
 **Product:** Easy Access Agents for Power Users
-**Status:** MVP complete (phases 0–7) · see `IMPLEMENTATION_ROADMAP.md` → MVP acceptance results
+**Status:** MVP complete (phases 0–7) · V2 in progress — scope and roadmap in `V2_ARCHITECTURE.md`, status in `../V2_PROGRESS.md`
 
 ## 1. Vision
 
@@ -57,7 +57,9 @@ An Agent Studio that lets technically capable users create, configure, test and 
 
 Ollama advertises tool support via `/api/show` → `capabilities`. Advertised support ≠ reliable behavior. Spike with `llama3.2:1b` (5 trials): correct tool call 5/5, final answer used tool result 0/5, spurious tool calls on small talk 5/5, token streaming 5/5. Conclusion: the pipeline works; small models are suitable only for wiring tests. Recommended models: `qwen3:8b` or `qwen3:4b`. The model is per-agent configuration, never hard-coded.
 
-## 8. Out of scope for MVP (postponed)
+## 8. Out of scope for MVP (postponed) — lifted by V2
+
+> **V2 update (2026-11-15):** these items are now in scope and scheduled in `V2_ARCHITECTURE.md` §10, except *unrestricted Python execution*, which remains permanently out of scope.
 
 Multi-agent collaboration · drag-and-drop workflow editor (React Flow) · MCP integrations · advanced RAG · production multi-tenant deployment · advanced persistent memory · reusable UI SDK packaging · unrestricted Python execution · authentication.
 

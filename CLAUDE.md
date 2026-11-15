@@ -2,11 +2,11 @@
 
 Easy Access Agents for Power Users — an Agent Studio (React) + Agent Runtime (FastAPI + LangGraph) for building and running tool-using AI agents on local Ollama models.
 
-Source of truth for design: `docs/PROJECT_SPEC.md`, `docs/ARCHITECTURE.md`, `docs/API_DESIGN.md`, `docs/IMPLEMENTATION_ROADMAP.md`. Read the relevant doc before changing architecture, API contracts, the DB schema or the event protocol — and update the doc in the same change.
+Source of truth for design: `docs/V2_ARCHITECTURE.md` (V2 target + roadmap), `docs/PROJECT_SPEC.md`, `docs/ARCHITECTURE.md`, `docs/API_DESIGN.md`, `docs/IMPLEMENTATION_ROADMAP.md`. Read the relevant doc before changing architecture, API contracts, the DB schema or the event protocol — and update the doc in the same change.
 
 ## Workflow
 - Work one roadmap phase at a time. A phase is done only when its completion criteria in `docs/IMPLEMENTATION_ROADMAP.md` are met and all checks pass.
-- Do not implement features listed as postponed in `docs/PROJECT_SPEC.md` (multi-agent, React Flow editor, MCP, RAG, multi-tenancy, advanced memory, SDK packaging).
+- V2 is in progress: implement features only in the order of the V2 roadmap (`docs/V2_ARCHITECTURE.md` §10) and record status/evidence/commits in `V2_PROGRESS.md`. Unrestricted code execution stays out of scope.
 - Do not add dependencies or abstractions not needed by the current phase. Justify any new dependency.
 
 ## Commands

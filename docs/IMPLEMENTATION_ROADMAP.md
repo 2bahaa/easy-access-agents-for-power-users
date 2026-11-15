@@ -97,3 +97,7 @@ tool schema around arguments (now unwrapped before normal validation).
 
 ## After the MVP (not scheduled)
 Multi-agent, React Flow editor, MCP tools, RAG, HITL with checkpointer, more providers, auth/multi-tenancy, advanced memory, SDK packaging — see `ARCHITECTURE.md` §10.
+
+## V2
+
+The V2 roadmap (phases 0–12) lives in `V2_ARCHITECTURE.md` §10; per-phase status, evidence and commits are tracked in `../V2_PROGRESS.md`.
