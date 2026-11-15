@@ -8,7 +8,7 @@ The runtime validates model-provided arguments with `args_model` before `run`.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Protocol
 
 from pydantic import BaseModel, ConfigDict
 
@@ -62,3 +62,22 @@ class Tool[ArgsT: BaseModel, ConfigT: BaseModel](ABC):
 
 
 AnyTool = Tool[Any, Any]
+
+
+class ToolLike(Protocol):
+    """What the registry and ToolNode need: satisfied by code tools (`Tool`) and by
+    runtime-defined tools (MCP, custom HTTP — see tools/external.py)."""
+
+    @property
+    def name(self) -> str: ...
+    @property
+    def description(self) -> str: ...
+    @property
+    def timeout_s(self) -> float | None: ...
+
+    def parse_args(self, raw: dict[str, Any]) -> Any: ...
+    def parse_config(self, raw: dict[str, Any]) -> Any: ...
+    def args_schema(self) -> dict[str, Any]: ...
+    def config_schema(self) -> dict[str, Any]: ...
+    def to_function_schema(self) -> dict[str, Any]: ...
+    async def run(self, args: Any, config: Any, ctx: ToolContext) -> str: ...

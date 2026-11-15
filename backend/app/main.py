@@ -13,6 +13,7 @@ from app.api.ratelimit import SlidingWindowLimiter
 from app.api.routers import (
     agents,
     auth,
+    capabilities,
     conversations,
     health,
     org,
@@ -93,6 +94,7 @@ def create_app(
     for module in (health, auth, org, agents, skills, tools, providers, conversations, runs):
         app.include_router(module.router, prefix="/api")
     app.include_router(agents.templates_router, prefix="/api")
+    app.include_router(capabilities.router, prefix="/api")
     app.include_router(skills.templates_router, prefix="/api")
     return app
 

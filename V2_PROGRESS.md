@@ -9,8 +9,8 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 | 2a | Durable runtime (queue, worker, resume) | done | 720b452 |
 | 2b | Auth, users, workspaces, tenancy, audit | done | 84dc4f8 |
 | 3 | Multi-provider | done | a5641fb |
-| 4 | Agent platform (versions, templates) & skills v2 | done | (this commit) |
-| 5 | Tools & MCP | pending | – |
+| 4 | Agent platform (versions, templates) & skills v2 | done | b206514 |
+| 5 | Tools & MCP | done | (this commit) |
 | 6 | Human approval | pending | – |
 | 7 | Knowledge & memory | pending | – |
 | 8 | Visual workflows | pending | – |
@@ -77,6 +77,15 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 - Provider connections pinned by a published version cannot be deleted.
 - Studio: status badge, Test (playground sheet), Publish dialog, History sheet (compare/restore), Duplicate, Export in the editor; template picker and JSON import on the agents list; skills page with tags/category, import/export, templates and history.
 - Tests: backend 238 passed / 2 skipped (+11 platform tests incl. frozen-skill behaviour, playground vs chat, atomic import, isolation/RBAC); frontend 25 files / 139 passed (+11). ruff, format, mypy, typecheck, lint, build clean.
+
+### Phase 5 — Tools & MCP
+- MCP integration on the official `mcp` SDK (v2.3): stdio (admin allow-listed commands, minimal child environment — platform secrets never leak) and Streamable HTTP (SSRF-guarded URLs, encrypted headers). Discovery imports tools **disabled**; admins enable per tool; agents still need explicit grants.
+- Custom HTTP tools: GET/POST with typed query/path/body parameters, encrypted headers, host allow-list (`CUSTOM_TOOL_ALLOWED_HOSTS`), link-local/metadata blocking, response caps.
+- One `ToolLike` protocol for native and runtime-defined tools; per-run registry (`ToolRegistry.extended`) with only the agent's granted, enabled tools; JSON-Schema argument validation surfaced as `validation` failures; outputs marked as untrusted data.
+- Fixed while testing: a grant to a tool disabled after granting crashed the run at bind time — now it is not bound and calls fail with `permission` (regression test added). Discovery gets ≥20 s (stdio start-up); MCP tool errors no longer surface as opaque task-group errors; allow-list accepts a JSON list (paths containing commas).
+- Studio: Tools page sections for MCP servers (register, discover, schema inspection, enable switches, health) and custom HTTP tools (parameter builder, write-only headers); source badges.
+- New deps (justified): `mcp` (official MCP SDK), `jsonschema` (validating MCP/HTTP tool arguments); dev: `types-jsonschema`.
+- Tests: backend 258 passed / 2 skipped (+20: real MCP server over stdio and Streamable HTTP, enable/disable/revocation, validation/error/timeout paths, registration rules, isolation/RBAC, child-env minimality, HTTP tool request building/SSRF/caps); frontend 26 files / 143 passed (+4). ruff, format, mypy, typecheck, lint, build clean.
 
 ## Known issues
 - Frontend bundle is 574 kB (minified); route-level code splitting planned with the workflow editor (Phase 8).

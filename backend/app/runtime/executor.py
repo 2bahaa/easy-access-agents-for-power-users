@@ -178,8 +178,11 @@ class AgentRun:
                 )
 
         model: Any = self.provider.create_chat_model(cfg.model, cfg.model_params)
-        if tool_names:  # bind ONLY the permitted tools
-            model = model.bind_tools(self.tool_registry.function_schemas(tool_names))
+        # Bind ONLY permitted tools that are still available (an external tool may have been
+        # disabled since it was granted; calls to it are then rejected by the ToolNode).
+        bindable = [n for n in tool_names if n in self.tool_registry]
+        if bindable:
+            model = model.bind_tools(self.tool_registry.function_schemas(bindable))
 
         graph = build_graph(
             model,

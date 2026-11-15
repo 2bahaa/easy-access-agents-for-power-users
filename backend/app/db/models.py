@@ -184,6 +184,70 @@ class ModelCapabilityOverride(Base):
     )
 
 
+class McpServer(TimestampMixin, Base):
+    """A registered MCP server. Its tools are imported disabled; admins enable them."""
+
+    __tablename__ = "mcp_servers"
+    __table_args__ = (UniqueConstraint("workspace_id", "slug"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(100))
+    slug: Mapped[str] = mapped_column(String(32))  # used in tool names: mcp__<slug>__<tool>
+    transport: Mapped[str] = mapped_column(String(16))  # stdio | http
+    command: Mapped[str | None] = mapped_column(String(500))
+    args: Mapped[list[Any]] = mapped_column(default=list)
+    url: Mapped[str | None] = mapped_column(String(500))
+    # Encrypted JSON {"env": {...}, "headers": {...}}; never returned by the API.
+    secrets_enc: Mapped[str | None] = mapped_column(Text)
+    secret_keys: Mapped[list[Any]] = mapped_column(default=list)  # names only, for display
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    timeout_s: Mapped[int] = mapped_column(Integer, default=30)
+    status: Mapped[str] = mapped_column(String(16), default="unknown")
+    last_error: Mapped[str | None] = mapped_column(Text)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class McpTool(Base):
+    __tablename__ = "mcp_tools"
+    __table_args__ = (UniqueConstraint("server_id", "name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    server_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("mcp_servers.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str] = mapped_column(Text, default="")
+    input_schema: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)  # deny by default
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class CustomTool(TimestampMixin, Base):
+    """A user-defined HTTP tool (allow-listed hosts only)."""
+
+    __tablename__ = "custom_tools"
+    __table_args__ = (UniqueConstraint("workspace_id", "slug"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    slug: Mapped[str] = mapped_column(String(40))  # tool name: http__<slug>
+    description: Mapped[str] = mapped_column(Text, default="")
+    method: Mapped[str] = mapped_column(String(8))
+    url_template: Mapped[str] = mapped_column(String(1000))
+    params: Mapped[list[Any]] = mapped_column(default=list)
+    headers_enc: Mapped[str | None] = mapped_column(Text)
+    header_keys: Mapped[list[Any]] = mapped_column(default=list)
+    timeout_s: Mapped[int] = mapped_column(Integer, default=15)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
 def _workspace_fk() -> Mapped[uuid.UUID]:
     return mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
 

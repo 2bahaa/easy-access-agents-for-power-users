@@ -1,11 +1,12 @@
-"""In-memory registry of available tools (code-defined). Future MCP tools register here too."""
+"""Registry of tools available to a run: the code-defined tools, extended per run with the
+agent's runtime-defined tools (MCP, custom HTTP)."""
 
 from collections.abc import Iterable
 from typing import Any
 
 from pydantic import ValidationError
 
-from app.tools.base import AnyTool
+from app.tools.base import ToolLike
 
 
 class UnknownToolError(KeyError):
@@ -17,17 +18,17 @@ class ToolConfigError(ValueError):
 
 
 class ToolRegistry:
-    def __init__(self, tools: Iterable[AnyTool] = ()) -> None:
-        self._tools: dict[str, AnyTool] = {}
+    def __init__(self, tools: Iterable[ToolLike] = ()) -> None:
+        self._tools: dict[str, ToolLike] = {}
         for tool in tools:
             self.register(tool)
 
-    def register(self, tool: AnyTool) -> None:
+    def register(self, tool: ToolLike) -> None:
         if tool.name in self._tools:
             raise ValueError(f"Tool '{tool.name}' is already registered")
         self._tools[tool.name] = tool
 
-    def get(self, name: str) -> AnyTool:
+    def get(self, name: str) -> ToolLike:
         try:
             return self._tools[name]
         except KeyError:
@@ -36,8 +37,12 @@ class ToolRegistry:
     def __contains__(self, name: object) -> bool:
         return name in self._tools
 
-    def all(self) -> list[AnyTool]:
+    def all(self) -> list[ToolLike]:
         return sorted(self._tools.values(), key=lambda t: t.name)
+
+    def extended(self, extra: Iterable[ToolLike]) -> "ToolRegistry":
+        """A new registry with these tools added (the shared registry is never mutated)."""
+        return ToolRegistry([*self._tools.values(), *extra])
 
     def normalize_config(self, name: str, raw: dict[str, Any]) -> dict[str, Any]:
         """Validate a per-agent config and return its canonical form for storage."""

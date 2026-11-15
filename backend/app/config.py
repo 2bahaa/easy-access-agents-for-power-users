@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     # link-local/metadata addresses which are always blocked.
     provider_blocked_hosts: str = ""
 
+    # MCP stdio servers start local processes: only these commands may be registered
+    # (comma-separated executables, e.g. "npx,uvx,python", or a JSON list). Empty = disabled.
+    mcp_stdio_allowed_commands: str = ""
+    # Hosts custom HTTP tools may call (comma-separated; "*.example.com" wildcards).
+    custom_tool_allowed_hosts: str = ""
+
     # Comma-separated list of allowed browser origins.
     cors_origins: str = "http://localhost:5173"
 
@@ -74,6 +80,21 @@ class Settings(BaseSettings):
 
         url = make_url(self.database_url).set(drivername="postgresql")
         return url.render_as_string(hide_password=False)
+
+    @property
+    def mcp_stdio_commands(self) -> list[str]:
+        """Comma-separated, or a JSON list for entries containing commas
+        (e.g. ["C:\Tools,v2\python.exe"])."""
+        raw = self.mcp_stdio_allowed_commands.strip()
+        if raw.startswith("["):
+            import json
+
+            return [str(c).strip() for c in json.loads(raw) if str(c).strip()]
+        return [c.strip() for c in raw.split(",") if c.strip()]
+
+    @property
+    def custom_tool_hosts(self) -> list[str]:
+        return [h.strip().lower() for h in self.custom_tool_allowed_hosts.split(",") if h.strip()]
 
     @property
     def cors_origin_list(self) -> list[str]:

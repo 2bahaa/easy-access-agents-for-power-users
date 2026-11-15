@@ -35,6 +35,7 @@ from app.services import (
     agent_platform,
     agent_service,
     audit_service,
+    capability_service,
     conversation_service,
     run_queue,
 )
@@ -42,6 +43,7 @@ from app.services.errors import ConflictError, NotFoundError
 from app.services.principal import Principal
 from app.services.provider_service import ProviderResolver
 from app.tools.base import ToolContext
+from app.tools.external import is_external
 from app.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -247,6 +249,13 @@ async def prepare_agent_run(
     user_message_id = next(
         (m.id for m in messages if m.run_id == run.id and m.role == "user"), None
     )
+    external = [t.name for t in config.tools if is_external(t.name)]
+    if external:  # only the agent's granted, still-enabled external tools (secrets in memory)
+        tools = tools.extended(
+            await capability_service.external_tools(
+                session, run.workspace_id, settings, resolver.secrets, names=external
+            )
+        )
     return AgentRun(
         RunRequest(
             run_id=run.id,

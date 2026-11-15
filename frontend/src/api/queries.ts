@@ -1,7 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "./client";
-import type { AgentExportDocument, AgentWrite, ProviderConnectionWrite, Role, SkillWrite } from "./types";
+import type {
+  AgentExportDocument,
+  AgentWrite,
+  CustomToolWrite,
+  McpServerCreate,
+  ProviderConnectionWrite,
+  Role,
+  SkillWrite,
+} from "./types";
 
 export const keys = {
   health: ["health"] as const,
@@ -17,6 +25,8 @@ export const keys = {
   conversation: (id: string) => ["conversation", id] as const,
   runEvents: (runId: string) => ["runs", runId, "events"] as const,
   members: ["members"] as const,
+  mcpServers: ["mcp-servers"] as const,
+  customTools: ["custom-tools"] as const,
   agentVersions: (id: string) => ["agents", id, "versions"] as const,
   agentTemplates: ["agent-templates"] as const,
   skillTemplates: ["skill-templates"] as const,
@@ -39,8 +49,7 @@ export const useSkills = () => useQuery({ queryKey: keys.skills, queryFn: api.li
 export const useSkill = (id: string | undefined) =>
   useQuery({ queryKey: keys.skill(id ?? ""), queryFn: () => api.getSkill(id!), enabled: !!id });
 
-export const useTools = () =>
-  useQuery({ queryKey: keys.tools, queryFn: api.listTools, staleTime: Infinity });
+export const useTools = () => useQuery({ queryKey: keys.tools, queryFn: api.listTools, staleTime: 30_000 });
 
 export const useModels = (provider: string, enabled = true) =>
   useQuery({
@@ -309,3 +318,32 @@ export function useImportSkill() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.skills }),
   });
 }
+
+// ---- MCP & custom tools ----
+
+export const useMcpServers = () => useQuery({ queryKey: keys.mcpServers, queryFn: api.listMcpServers });
+export const useCustomTools = () => useQuery({ queryKey: keys.customTools, queryFn: api.listCustomTools });
+
+function useToolsMutation<V, R>(fn: (v: V) => Promise<R>, key: readonly unknown[]) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: key });
+      void qc.invalidateQueries({ queryKey: keys.tools });
+    },
+  });
+}
+
+export const useCreateMcpServer = () =>
+  useToolsMutation((data: McpServerCreate) => api.createMcpServer(data), keys.mcpServers);
+export const useDeleteMcpServer = () => useToolsMutation((id: string) => api.deleteMcpServer(id), keys.mcpServers);
+export const useRefreshMcpServer = () => useToolsMutation((id: string) => api.refreshMcpServer(id), keys.mcpServers);
+export const useToggleMcpTool = () =>
+  useToolsMutation(
+    ({ id, tool, enabled }: { id: string; tool: string; enabled: boolean }) => api.toggleMcpTool(id, tool, enabled),
+    keys.mcpServers,
+  );
+export const useCreateCustomTool = () =>
+  useToolsMutation((data: CustomToolWrite) => api.createCustomTool(data), keys.customTools);
+export const useDeleteCustomTool = () => useToolsMutation((id: string) => api.deleteCustomTool(id), keys.customTools);

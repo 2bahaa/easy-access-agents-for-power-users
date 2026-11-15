@@ -7,7 +7,9 @@ use LISTEN/NOTIFY, which only see committed data); every DB test starts from emp
 """
 
 import asyncio
+import json
 import os
+import sys
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 
@@ -75,6 +77,8 @@ def settings(database_url: str, tmp_path_factory: pytest.TempPathFactory) -> Set
         run_stale_after_s=2.0,
         jwt_secret="test-secret-not-for-production-0123456789",
         secret_encryption_key=Fernet.generate_key().decode(),
+        mcp_stdio_allowed_commands=json.dumps([sys.executable]),  # path may contain commas
+        custom_tool_allowed_hosts="api.example.test,*.allowed.test",
     )
 
 

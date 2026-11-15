@@ -110,6 +110,8 @@ export interface ToolInfo {
   args_schema: JsonSchema;
   config_schema: JsonSchema;
   timeout_s: number;
+  /** native = built into the server; mcp/http = defined in this workspace. */
+  source?: "native" | "mcp" | "http";
 }
 
 export type ProviderKind = "ollama" | "openai" | "openai_compatible" | "anthropic" | "gemini";
@@ -330,4 +332,68 @@ export interface SkillVersion {
   content_md: string;
   created_by: string | null;
   created_at: string;
+}
+
+// ---- MCP servers & custom HTTP tools ----
+
+export interface McpToolInfo {
+  name: string;
+  description: string;
+  input_schema: JsonSchema;
+  enabled: boolean;
+}
+
+export interface McpServer {
+  id: string;
+  name: string;
+  slug: string;
+  transport: "stdio" | "http";
+  command: string | null;
+  args: string[];
+  url: string | null;
+  secret_keys: string[];
+  enabled: boolean;
+  timeout_s: number;
+  status: "ok" | "error" | "unknown";
+  last_error: string | null;
+  last_checked_at: string | null;
+  tools: McpToolInfo[];
+}
+
+export interface McpServerCreate {
+  name: string;
+  slug: string;
+  transport: "stdio" | "http";
+  command?: string | null;
+  args?: string[];
+  url?: string | null;
+  env?: Record<string, string>;
+  headers?: Record<string, string>;
+  timeout_s?: number;
+}
+
+export interface HttpParam {
+  name: string;
+  type: "string" | "number" | "integer" | "boolean";
+  location: "query" | "path" | "body";
+  required: boolean;
+  description: string;
+}
+
+export interface CustomToolWrite {
+  slug: string;
+  description: string;
+  method: "GET" | "POST";
+  url_template: string;
+  params: HttpParam[];
+  headers?: Record<string, string> | null;
+  timeout_s?: number;
+  enabled?: boolean;
+}
+
+export interface CustomTool extends Omit<CustomToolWrite, "headers"> {
+  id: string;
+  tool_name: string;
+  header_keys: string[];
+  updated_at: string;
 }

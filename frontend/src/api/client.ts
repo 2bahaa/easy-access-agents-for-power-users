@@ -21,6 +21,11 @@ import type {
   ProviderConnectionWrite,
   AgentExportDocument,
   AgentTemplate,
+  CustomTool,
+  CustomToolWrite,
+  McpServer,
+  McpServerCreate,
+  McpToolInfo,
   AgentVersion,
   AgentVersionSummary,
   ImportResult,
@@ -201,6 +206,18 @@ export const api = {
     return response.text();
   },
   importSkill: (markdown: string) => request<Skill>("/skills/import", json("POST", { markdown })),
+
+  // ---- MCP & custom tools ----
+  listMcpServers: () => request<McpServer[]>("/mcp-servers"),
+  createMcpServer: (data: McpServerCreate) => request<McpServer>("/mcp-servers", json("POST", data)),
+  deleteMcpServer: (id: string) => request<void>(`/mcp-servers/${id}`, { method: "DELETE" }),
+  refreshMcpServer: (id: string) =>
+    request<{ server: McpServer; warnings: string[] }>(`/mcp-servers/${id}/refresh`, { method: "POST" }),
+  toggleMcpTool: (id: string, tool: string, enabled: boolean) =>
+    request<McpToolInfo>(`/mcp-servers/${id}/tools/${encodeURIComponent(tool)}`, json("PUT", { enabled })),
+  listCustomTools: () => request<CustomTool[]>("/custom-tools"),
+  createCustomTool: (data: CustomToolWrite) => request<CustomTool>("/custom-tools", json("POST", data)),
+  deleteCustomTool: (id: string) => request<void>(`/custom-tools/${id}`, { method: "DELETE" }),
 
   // ---- auth & organization ----
   login: (email: string, password: string) =>

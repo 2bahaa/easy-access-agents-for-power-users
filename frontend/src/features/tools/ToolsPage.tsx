@@ -9,9 +9,13 @@ import { Badge } from "../../components/ui/Badge";
 import { Card } from "../../components/ui/Card";
 import { ErrorState, Skeleton } from "../../components/ui/States";
 import { PageHeader } from "../../layout/PageHeader";
+import { roleAtLeast, useAuth } from "../auth/auth-context";
+import { CustomToolsSection, McpServersSection } from "./ToolSources";
 
 export function ToolsPage() {
   const { data: tools, isPending, isError, error, refetch } = useTools();
+  const { role } = useAuth();
+  const canManage = roleAtLeast(role, "admin");
   return (
     <>
       <PageHeader
@@ -24,6 +28,7 @@ export function ToolsPage() {
           <span className="font-medium text-fg">Safe by design.</span> Every call is checked against
           the agent's permissions, its arguments are validated, and it runs with a timeout and a
           per-run call limit. No tool can run arbitrary code or access files outside the workspace.
+          MCP and HTTP tools are off until an admin enables them, and their output is treated as untrusted data.
         </p>
       </div>
 
@@ -43,6 +48,8 @@ export function ToolsPage() {
           ))}
         </ul>
       )}
+      <McpServersSection canManage={canManage} />
+      <CustomToolsSection canManage={canManage} />
     </>
   );
 }
@@ -60,6 +67,9 @@ function ToolCard({ tool }: { tool: ToolInfo }) {
             <code className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-muted">
               {tool.name}
             </code>
+            {tool.source && tool.source !== "native" && (
+              <Badge tone="violet">{tool.source === "mcp" ? "MCP" : "HTTP"}</Badge>
+            )}
           </div>
           <p className="mt-1 text-sm text-muted">{tool.description}</p>
         </div>

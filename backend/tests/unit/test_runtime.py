@@ -359,3 +359,20 @@ async def test_large_token_chunks_are_split_into_bounded_deltas(tmp_path: Path) 
     assert len(deltas) == 3
     assert all(len(e.text) <= MAX_DELTA_CHARS for e in deltas)
     assert "".join(e.text for e in deltas) == big
+
+
+async def test_granted_but_unavailable_tool_is_not_bound_and_is_rejected(tmp_path: Path) -> None:
+    """A grant for a tool missing from the run's registry (e.g. an MCP tool disabled after it
+    was granted) must not crash the run: it is not bound, and calls are refused."""
+    from app.runtime.events import ToolCallFailed
+
+    config = make_config(tools=[ToolGrant(name="calculator"), ToolGrant(name="mcp__gone__tool")])
+    provider = FakeProvider(
+        FakeChatModel(responses=[reply("", tool_call("mcp__gone__tool", {}, "g")), reply("ok")])
+    )
+    events = await collect(make_run(tmp_path, config=config, provider=provider))
+    assert events[-1].type == "run.completed"
+    failed = [e for e in events if isinstance(e, ToolCallFailed)]
+    assert [(f.tool, f.kind) for f in failed] == [("mcp__gone__tool", "permission")]
+    bound = {t["function"]["name"] for t in provider.model.bound_tools or []}
+    assert bound == {"calculator"}

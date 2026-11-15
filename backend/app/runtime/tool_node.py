@@ -19,6 +19,7 @@ from app.runtime.limits import EffectiveLimits
 from app.runtime.state import AgentState
 from app.runtime.types import ToolGrant
 from app.tools.base import ToolContext, ToolError
+from app.tools.external import ToolArgsError
 from app.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -147,6 +148,8 @@ class ToolNode:
         except ValidationError as e:
             message = f"Invalid arguments: {_summarize_validation(e)}"
             raise _ToolFailure("validation", message) from None
+        except ToolArgsError as e:  # JSON-Schema validated tools (MCP, custom HTTP)
+            raise _ToolFailure("validation", f"Invalid arguments: {e}") from None
         try:
             config = tool.parse_config(grant.config)
         except ValidationError:

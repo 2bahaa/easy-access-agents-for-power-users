@@ -13,10 +13,11 @@ from app.db.models import Agent, AgentSkill, AgentTool, Skill
 from app.runtime.providers.base import ProviderError
 from app.schemas.agents import AgentRead, AgentWrite, ModelParams, ToolSelection
 from app.schemas.skills import SkillRef
-from app.services import audit_service, provider_service
+from app.services import audit_service, capability_service, provider_service
 from app.services.errors import ConflictError, DomainValidationError, NotFoundError
 from app.services.principal import Principal
 from app.services.provider_service import ProviderResolver
+from app.tools.external import is_external
 from app.tools.registry import ToolConfigError, ToolRegistry, UnknownToolError
 
 
@@ -85,6 +86,9 @@ def validate_tools(data: AgentWrite, registry: ToolRegistry) -> dict[str, dict[s
     """Return {tool_name: canonical config}; raise 422 for unknown tools or bad configs."""
     configs: dict[str, dict[str, Any]] = {}
     for sel in data.tools:
+        if is_external(sel.name):  # validated against the workspace in validate_external_tools
+            configs[sel.name] = sel.config
+            continue
         try:
             configs[sel.name] = registry.normalize_config(sel.name, sel.config)
         except UnknownToolError:
@@ -92,6 +96,22 @@ def validate_tools(data: AgentWrite, registry: ToolRegistry) -> dict[str, dict[s
         except ToolConfigError as e:
             raise DomainValidationError(str(e)) from None
     return configs
+
+
+async def validate_external_tools(
+    session: AsyncSession,
+    principal: Principal,
+    configs: dict[str, dict[str, Any]],
+    settings: Settings,
+    resolver: ProviderResolver,
+) -> dict[str, dict[str, Any]]:
+    out = dict(configs)
+    for name, config in configs.items():
+        if is_external(name):
+            out[name] = await capability_service.normalize_external_grant(
+                session, principal.workspace_id, settings, resolver.secrets, name, config
+            )
+    return out
 
 
 async def check_provider_and_model(
@@ -178,6 +198,9 @@ async def create_agent(
     principal.require("editor")
     check_limits(data, settings)
     tool_configs = validate_tools(data, registry)
+    tool_configs = await validate_external_tools(
+        session, principal, tool_configs, settings, resolver
+    )
     kind = await check_provider_and_model(session, principal, data, resolver)
     skills = await _resolve_skills(session, data.skill_ids, principal.workspace_id)
     agent = Agent(workspace_id=principal.workspace_id, skill_links=[], tool_links=[])
@@ -200,6 +223,9 @@ async def update_agent(
     agent = await get_agent(session, agent_id, principal.workspace_id)
     check_limits(data, settings)
     tool_configs = validate_tools(data, registry)
+    tool_configs = await validate_external_tools(
+        session, principal, tool_configs, settings, resolver
+    )
     kind = await check_provider_and_model(session, principal, data, resolver)
     skills = await _resolve_skills(session, data.skill_ids, principal.workspace_id)
     _apply(agent, data, kind, skills, tool_configs)
