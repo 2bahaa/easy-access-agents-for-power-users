@@ -222,6 +222,7 @@ async def test_node_types_and_templates_are_valid(client: AsyncClient) -> None:
         "router",
         "parallel",
         "approval",
+        "supervisor",
     } == set(types)
     for template in (await client.get("/api/workflow-templates")).json():
         result = (await client.post("/api/workflows/validate", json=template["spec"])).json()
@@ -230,3 +231,72 @@ async def test_node_types_and_templates_are_valid(client: AsyncClient) -> None:
             all("Unknown model provider" in p["message"] or not p for p in result["problems"])
             or result["valid"]
         ), template["id"]
+
+
+async def test_supervisor_team_end_to_end(client: AsyncClient, fake_provider: FakeProvider) -> None:
+    from tests.fakes import tool_call
+
+    researcher = await create_agent(
+        client, name="Researcher", tools=[], system_prompt="Find facts."
+    )
+    spec = {
+        "nodes": [
+            node("start", "start", inputs=[{"name": "topic"}]),
+            node(
+                "team",
+                "supervisor",
+                model="fake-tools:1b",
+                task="Explain {{ input.topic }}",
+                members=[{"name": "researcher", "agent_id": researcher["id"], "role": "facts"}],
+                max_delegations=2,
+            ),
+            node("end", "end", output="{{ team }}"),
+        ],
+        "edges": edges(("start", "team"), ("team", "end")),
+    }
+    wf = await _create(client, spec, name="Team")
+    fake_provider.model.responses = [
+        reply(
+            "",
+            tool_call(
+                "delegate",
+                {"member": "researcher", "task": "Facts about tides", "reason": "needs facts"},
+                "d1",
+            ),
+        ),
+        reply("Tides are caused by the moon."),  # the member agent
+        reply("", tool_call("finish", {"answer": "Tides: the moon pulls the oceans."}, "f1")),
+    ]
+    _, events = await _run(client, wf["id"], {"topic": "tides"})
+    delegated = next(e for e in events if e["event"] == "agent.delegated")["data"]
+    assert (delegated["member"], delegated["reason"], delegated["agent_id"]) == (
+        "researcher",
+        "needs facts",
+        researcher["id"],
+    )
+    result = next(e for e in events if e["event"] == "agent.result")["data"]
+    assert result["output"] == "Tides are caused by the moon." and result["ok"] is True
+    assert events[-1]["data"]["output"] == "Tides: the moon pulls the oceans."
+    # The member ran with its own instructions and only the delegated task.
+    member_prompt = fake_provider.model.prompts[1]
+    assert (
+        "Find facts." in str(member_prompt[0].content)
+        and member_prompt[-1].content == "Facts about tides"
+    )
+
+    bad = {
+        **spec,
+        "nodes": [
+            spec["nodes"][0],
+            node(
+                "team",
+                "supervisor",
+                model="m",
+                task="t",
+                members=[{"name": "x", "agent_id": "00000000-0000-0000-0000-000000000000"}],
+            ),
+            spec["nodes"][2],
+        ],
+    }
+    problems = (await client.post("/api/workflows/validate", json=bad)).json()["problems"]
+    assert any("Unknown agent for member" in p["message"] for p in problems)

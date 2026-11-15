@@ -50,6 +50,20 @@ describe("WorkflowEditor", () => {
     });
   });
 
+  it("configures a team node with members", async () => {
+    const onChange = vi.fn();
+    render(<WorkflowEditor value={SPEC} onChange={onChange} catalogs={{ ...CATALOGS, agents: [{ id: "ag-1", name: "Researcher" }] }} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Add Team node" }));
+    const settings = screen.getByRole("complementary", { name: "Node settings" });
+    await userEvent.click(within(settings).getByRole("button", { name: "Add member" }));
+    await userEvent.selectOptions(within(settings).getByLabelText("Member 1 agent"), "ag-1");
+    await userEvent.type(within(settings).getByLabelText("Member 1 role"), "facts");
+    await waitFor(() => {
+      const spec = onChange.mock.lastCall![0] as WorkflowSpec;
+      expect(spec.nodes.find((n) => n.type === "supervisor")?.config.members).toEqual([{ name: "member1", agent_id: "ag-1", role: "facts" }]);
+    });
+  });
+
   it("shows server problems on nodes and is read-only when asked", async () => {
     render(
       <WorkflowEditor

@@ -270,6 +270,8 @@ function EditorInner({ value, onChange, catalogs, problems = [], run, readOnly }
             type={selected.data.nodeType}
             label={selected.data.label}
             config={selected.data.config}
+            retries={selected.data.retries ?? 0}
+            onError={selected.data.onError ?? "fail"}
             catalogs={catalogs}
             problems={problemsBy.get(selected.id)}
             output={run?.nodes[selected.id]?.output}
@@ -277,7 +279,7 @@ function EditorInner({ value, onChange, catalogs, problems = [], run, readOnly }
             onChange={(patch) =>
               !readOnly &&
               setNodes((c) =>
-                c.map((n) => (n.id === selected.id ? { ...n, data: { ...n.data, ...(patch.label !== undefined ? { label: patch.label } : {}), ...(patch.config ? { config: patch.config } : {}) } } : n)),
+                c.map((n) => (n.id === selected.id ? { ...n, data: { ...n.data, ...(patch.label !== undefined ? { label: patch.label } : {}), ...(patch.config ? { config: patch.config } : {}), ...(patch.retries !== undefined ? { retries: patch.retries } : {}), ...(patch.onError ? { onError: patch.onError } : {}) } } : n)),
               )
             }
           />

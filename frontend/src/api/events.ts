@@ -107,6 +107,28 @@ export interface NodeFailed extends EventBase {
   type: "node.failed";
   node_id: string;
   error: string;
+  will_retry?: boolean;
+  /** on_error="continue": the workflow went on with an empty output. */
+  continued?: boolean;
+}
+
+/** A workflow supervisor handed a task to a team member, with its stated reason. */
+export interface AgentDelegated extends EventBase {
+  type: "agent.delegated";
+  node_id: string;
+  member: string;
+  agent_id: string;
+  task: string;
+  reason: string;
+}
+
+export interface AgentResult extends EventBase {
+  type: "agent.result";
+  node_id: string;
+  member: string;
+  output: string;
+  duration_ms: number;
+  ok: boolean;
 }
 
 /** A tool call was held for human approval (not executed). */
@@ -135,6 +157,8 @@ export type AgentEvent =
   | NodeStarted
   | NodeCompleted
   | NodeFailed
+  | AgentDelegated
+  | AgentResult
   | RunCompleted
   | RunFailed
   | RunCancelled

@@ -481,7 +481,7 @@ export interface AgentMemory {
 // ---- workflows ----
 
 export type WorkflowNodeType =
-  | "start" | "end" | "agent" | "llm" | "tool" | "knowledge" | "memory" | "condition" | "router" | "parallel" | "approval";
+  | "start" | "end" | "agent" | "llm" | "tool" | "knowledge" | "memory" | "condition" | "router" | "parallel" | "approval" | "supervisor";
 
 export interface WorkflowNodeSpec {
   id: string;
@@ -489,6 +489,8 @@ export interface WorkflowNodeSpec {
   label?: string;
   config: Record<string, unknown>;
   position?: { x: number; y: number };
+  retries?: number;
+  on_error?: "fail" | "continue";
 }
 
 export interface WorkflowEdgeSpec {

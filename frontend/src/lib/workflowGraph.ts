@@ -10,6 +10,8 @@ export interface WfNodeData extends Record<string, unknown> {
   nodeType: WorkflowNodeType;
   label: string;
   config: Record<string, unknown>;
+  retries?: number;
+  onError?: "fail" | "continue";
   status?: NodeStatus;
   output?: string;
   problem?: string;
@@ -37,9 +39,15 @@ export const NODE_META: Record<WorkflowNodeType, NodeMeta> = {
   router: { title: "Router", description: "LLM picks a branch", accent: "border-warning/60 bg-warning/5", defaultConfig: () => ({ provider: "ollama", model: "qwen3:4b", routes: ["a", "b"], instructions: "", input: "{{ input.text }}" }) },
   parallel: { title: "Parallel", description: "Run branches at the same time", accent: "border-line-strong bg-surface-2", defaultConfig: () => ({}) },
   approval: { title: "Approval", description: "Wait for a human decision", accent: "border-danger/50 bg-danger/5", defaultConfig: () => ({ message: "Continue?" }) },
+  supervisor: {
+    title: "Team",
+    description: "A supervisor delegates to member agents",
+    accent: "border-accent-500/60 bg-accent-500/5",
+    defaultConfig: () => ({ provider: "ollama", model: "qwen3:4b", instructions: "", task: "{{ input.text }}", members: [], max_delegations: 4, share_task_with_members: false }),
+  },
 };
 
-export const PALETTE: WorkflowNodeType[] = ["start", "agent", "llm", "tool", "knowledge", "memory", "condition", "router", "parallel", "approval", "end"];
+export const PALETTE: WorkflowNodeType[] = ["start", "agent", "llm", "tool", "knowledge", "memory", "condition", "router", "parallel", "approval", "supervisor", "end"];
 
 /** Output handles of a node: branch names, or a single unnamed handle. */
 export function outputHandles(type: WorkflowNodeType, config: Record<string, unknown>): string[] {
@@ -55,7 +63,7 @@ export function specToFlow(spec: WorkflowSpec): { nodes: WfNode[]; edges: Edge[]
     id: n.id,
     type: "wf",
     position: n.position ?? { x: 0, y: 0 },
-    data: { nodeType: n.type, label: n.label ?? "", config: n.config ?? {} },
+    data: { nodeType: n.type, label: n.label ?? "", config: n.config ?? {}, retries: n.retries ?? 0, onError: n.on_error ?? "fail" },
   }));
   const edges: Edge[] = spec.edges.map((e, i) => ({
     id: `e${i}-${e.source}-${e.target}-${e.source_handle ?? "out"}`,
@@ -75,6 +83,8 @@ export function flowToSpec(nodes: WfNode[], edges: Edge[]): WorkflowSpec {
       type: n.data.nodeType,
       label: n.data.label,
       config: n.data.config,
+      ...(n.data.retries ? { retries: n.data.retries } : {}),
+      ...(n.data.onError === "continue" ? { on_error: "continue" as const } : {}),
       position: { x: Math.round(n.position.x), y: Math.round(n.position.y) },
     })),
     edges: edges.map((e) => ({
@@ -132,7 +142,13 @@ export function reduceRunEvent(view: RunView, e: AgentEvent): RunView {
         log: log(`✓ ${e.node_id} (${e.duration_ms} ms)`, "success"),
       };
     case "node.failed":
+      if (e.will_retry) return { ...view, log: log(`↻ ${e.node_id}: ${e.error} — retrying`, "warning") };
+      if (e.continued) return { ...view, nodes: { ...view.nodes, [e.node_id]: { status: "completed", error: e.error } }, log: log(`⚠ ${e.node_id}: ${e.error} — continuing`, "warning") };
       return { ...view, nodes: { ...view.nodes, [e.node_id]: { status: "failed", error: e.error } }, log: log(`✗ ${e.node_id}: ${e.error}`, "error") };
+    case "agent.delegated":
+      return { ...view, log: log(`→ ${e.node_id} delegated to ${e.member}${e.reason ? ` (${e.reason})` : ""}: ${e.task}`) };
+    case "agent.result":
+      return { ...view, log: log(`${e.ok ? "←" : "✗"} ${e.member} answered in ${(e.duration_ms / 1000).toFixed(1)} s: ${e.output}`, e.ok ? undefined : "error") };
     case "approval.requested":
       return { ...view, nodes: { ...view.nodes, [e.call_id]: { status: "paused" } }, log: log(`⏸ ${e.call_id} waits for approval`, "warning") };
     case "run.waiting_approval":

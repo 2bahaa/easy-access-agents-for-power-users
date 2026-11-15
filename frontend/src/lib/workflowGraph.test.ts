@@ -58,4 +58,32 @@ describe("workflow graph helpers", () => {
     expect(view.nodes.end).toMatchObject({ status: "failed", error: "boom" });
     expect(view.log.map((l) => l.tone)).toEqual(["info", "info", "success", "error", "error"]);
   });
+
+  it("traces team delegations, retries and continue-on-error", () => {
+    const base = { run_id: "r", ts: "" };
+    const events = [
+      { type: "agent.delegated", seq: 1, node_id: "team", member: "researcher", agent_id: "a", task: "Find facts", reason: "needs facts", ...base },
+      { type: "agent.result", seq: 2, node_id: "team", member: "researcher", output: "Facts", duration_ms: 1200, ok: true, ...base },
+      { type: "node.failed", seq: 3, node_id: "x", error: "flaky", will_retry: true, ...base },
+      { type: "node.failed", seq: 4, node_id: "x", error: "flaky", continued: true, ...base },
+    ] as unknown as AgentEvent[];
+    const view = events.reduce(reduceRunEvent, initialRunView);
+    expect(view.log.map((l) => l.text)).toEqual([
+      "→ team delegated to researcher (needs facts): Find facts",
+      "← researcher answered in 1.2 s: Facts",
+      "↻ x: flaky — retrying",
+      "⚠ x: flaky — continuing",
+    ]);
+    expect(view.nodes.x).toMatchObject({ status: "completed", error: "flaky" });
+  });
+
+  it("round-trips node resilience settings", () => {
+    const spec: WorkflowSpec = {
+      schema_version: 1,
+      nodes: [{ id: "a", type: "llm", config: {}, position: { x: 0, y: 0 }, retries: 2, on_error: "continue" }],
+      edges: [],
+    };
+    const { nodes, edges } = specToFlow(spec);
+    expect(flowToSpec(nodes, edges).nodes[0]).toMatchObject({ retries: 2, on_error: "continue" });
+  });
 });

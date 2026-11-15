@@ -92,6 +92,26 @@ class ApprovalConfig(_Config):
     message: str = Field(min_length=1, max_length=2000)
 
 
+class TeamMember(_Config):
+    name: str = Field(pattern=r"^[a-zA-Z][a-zA-Z0-9_-]{0,39}$")
+    agent_id: uuid.UUID
+    role: str = Field(default="", max_length=500, description="What this member is good at")
+
+
+class SupervisorConfig(_Config):
+    """A coordinating model that delegates tasks to member agents and composes the answer."""
+
+    provider: str = Field(default="ollama", max_length=50)
+    connection_id: uuid.UUID | None = None
+    model: str = Field(min_length=1, max_length=200)
+    instructions: str = Field(default="", max_length=5000)
+    task: str = Field(min_length=1, max_length=20_000, description="Template of the team's task")
+    members: list[TeamMember] = Field(min_length=1, max_length=10)
+    max_delegations: int = Field(default=4, ge=1, le=20)
+    # Members see only their delegated task unless the original task is shared.
+    share_task_with_members: bool = False
+
+
 CONFIG_MODELS: dict[str, type[BaseModel]] = {
     "start": StartConfig,
     "end": EndConfig,
@@ -104,6 +124,7 @@ CONFIG_MODELS: dict[str, type[BaseModel]] = {
     "router": RouterConfig,
     "parallel": ParallelConfig,
     "approval": ApprovalConfig,
+    "supervisor": SupervisorConfig,
 }
 NodeType = Literal[
     "start",
@@ -117,6 +138,7 @@ NodeType = Literal[
     "router",
     "parallel",
     "approval",
+    "supervisor",
 ]
 BRANCHING = {"condition": {"true", "false"}, "approval": {"approved", "rejected"}}
 
@@ -134,6 +156,9 @@ class NodeSpec(BaseModel):
     label: str = Field(default="", max_length=100)
     config: dict[str, Any] = Field(default_factory=dict)
     position: Position = Field(default_factory=Position)  # editor layout only
+    # Resilience: retry a failing node, then fail the run or continue with an empty output.
+    retries: int = Field(default=0, ge=0, le=3)
+    on_error: Literal["fail", "continue"] = "fail"
 
 
 class EdgeSpec(BaseModel):
@@ -274,6 +299,14 @@ def validate_structure(spec: WorkflowSpec) -> list[SpecProblem]:
         problems.append(SpecProblem(message="Workflows cannot contain loops"))
         return problems
 
+    for node in spec.nodes:
+        if node.type == "supervisor":
+            member_names = [m.name for m in SupervisorConfig.model_validate(node.config).members]
+            if len(set(member_names)) != len(member_names):
+                problems.append(
+                    SpecProblem(node_id=node.id, message="Team member names must be unique")
+                )
+
     # Condition expressions must parse and reference earlier steps / inputs only.
     from app.runtime.workflow.expressions import ExpressionError, condition_names
 
@@ -312,6 +345,7 @@ def validate_structure(spec: WorkflowSpec) -> list[SpecProblem]:
                 "memory",
                 "router",
                 "approval",
+                "supervisor",
             ):
                 for m in TEMPLATE_REF.finditer(text):
                     if m.group(1) == "input" and m.group(2) and m.group(2) not in inputs:

@@ -6,7 +6,7 @@ import uuid
 from collections.abc import Sequence
 from typing import Any
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +24,7 @@ from app.runtime.workflow.spec import (
     RouterConfig,
     SpecProblem,
     StartConfig,
+    SupervisorConfig,
     ToolNodeConfig,
     WorkflowSpec,
     parse_config,
@@ -79,6 +80,19 @@ async def validate_spec(
         cfg = parse_config(node)
         if isinstance(cfg, (AgentNodeConfig, MemoryNodeConfig)) and cfg.agent_id not in agent_ids:
             problems.append(SpecProblem(node_id=node.id, message="Unknown agent"))
+        elif isinstance(cfg, SupervisorConfig):
+            unknown = [m.name for m in cfg.members if m.agent_id not in agent_ids]
+            if unknown:
+                problems.append(
+                    SpecProblem(
+                        node_id=node.id,
+                        message=f"Unknown agent for member(s): {', '.join(unknown)}",
+                    )
+                )
+            try:
+                await resolver.resolve(session, ws, cfg.provider, cfg.connection_id)
+            except (DomainValidationError, NotFoundError):
+                problems.append(SpecProblem(node_id=node.id, message="Unknown model provider"))
         elif isinstance(cfg, KnowledgeNodeConfig):
             if any(c not in collection_ids for c in cfg.collection_ids):
                 problems.append(
@@ -409,6 +423,30 @@ class DbWorkflowServices:
                 raise NodeError(f"Model provider error: {str(e)[:200]}") from None
             raise
         return str(reply.text)
+
+    async def chat(
+        self,
+        provider: str,
+        connection_id: uuid.UUID | None,
+        model: str,
+        messages: list[BaseMessage],
+        tools: list[dict[str, Any]],
+    ) -> AIMessage:
+        """One tool-enabled model turn (supervisor nodes)."""
+        async with self.session_factory() as session:
+            p = await self.resolver.resolve(session, self.workspace_id, provider, connection_id)
+        chat: Any = p.create_chat_model(model, {"temperature": 0})
+        if tools:
+            chat = chat.bind_tools(tools)
+        try:
+            reply = await chat.ainvoke(messages)
+        except Exception as e:
+            if p.is_provider_error(e):
+                raise NodeError(f"Model provider error: {str(e)[:200]}") from None
+            raise
+        if not isinstance(reply, AIMessage):
+            raise NodeError("The supervisor model returned an unexpected message")
+        return reply
 
     async def run_tool(self, tool: str, args: dict[str, Any], config: dict[str, Any]) -> str:
         async with self.session_factory() as session:

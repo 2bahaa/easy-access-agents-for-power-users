@@ -17,8 +17,10 @@ export interface NodeInspectorProps {
   type: WorkflowNodeType;
   label: string;
   config: Record<string, unknown>;
+  retries?: number;
+  onError?: "fail" | "continue";
   catalogs: WorkflowCatalogs;
-  onChange: (patch: { label?: string; config?: Record<string, unknown> }) => void;
+  onChange: (patch: { label?: string; config?: Record<string, unknown>; retries?: number; onError?: "fail" | "continue" }) => void;
   problems?: string[];
   /** Last run output of this node (debugging). */
   output?: string;
@@ -28,7 +30,7 @@ export interface NodeInspectorProps {
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 
 /** Per-type configuration form for the selected node (prop-driven). */
-export function NodeInspector({ id, type, label, config, catalogs, onChange, problems = [], output, error }: NodeInspectorProps) {
+export function NodeInspector({ id, type, label, config, retries = 0, onError = "fail", catalogs, onChange, problems = [], output, error }: NodeInspectorProps) {
   const set = (key: string, value: unknown) => onChange({ config: { ...config, [key]: value } });
   const meta = NODE_META[type];
   const providerSelect = (
@@ -126,7 +128,7 @@ export function NodeInspector({ id, type, label, config, catalogs, onChange, pro
           <Field label="Text" hint={templateHint}>{(p) => <Input {...p} value={str(config.text)} onChange={(e) => set("text", e.target.value)} />}</Field>
         </>
       )}
-      {(type === "llm" || type === "router") && (
+      {(type === "llm" || type === "router" || type === "supervisor") && (
         <>
           {providerSelect}
           {modelField}
@@ -211,6 +213,60 @@ export function NodeInspector({ id, type, label, config, catalogs, onChange, pro
         <Field label="Message for the reviewer" hint={templateHint}>
           {(p) => <Textarea {...p} rows={3} value={str(config.message)} onChange={(e) => set("message", e.target.value)} />}
         </Field>
+      )}
+      {type === "supervisor" && (
+        <>
+          <Field label="Team task" hint={templateHint}>{(p) => <Textarea {...p} rows={3} value={str(config.task)} onChange={(e) => set("task", e.target.value)} />}</Field>
+          <Field label="Supervisor instructions">{(p) => <Textarea {...p} rows={2} value={str(config.instructions)} onChange={(e) => set("instructions", e.target.value)} />}</Field>
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium">Members</legend>
+            {((config.members as Array<{ name: string; agent_id: string; role: string }>) ?? []).map((m, i, all) => {
+              const update = (patch: Partial<typeof m>) => set("members", all.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+              return (
+                <div key={i} className="space-y-1 rounded-lg border border-line p-2">
+                  <div className="flex gap-2">
+                    <Input aria-label={`Member ${i + 1} name`} placeholder="name" value={m.name} onChange={(e) => update({ name: e.target.value })} />
+                    <Button size="sm" variant="ghost" aria-label={`Remove member ${i + 1}`} icon={<X className="size-4" />} onClick={() => set("members", all.filter((_, j) => j !== i))} />
+                  </div>
+                  <Select aria-label={`Member ${i + 1} agent`} value={m.agent_id} onChange={(e) => update({ agent_id: e.target.value })}>
+                    <option value="">Choose an agent…</option>
+                    {catalogs.agents.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </Select>
+                  <Input aria-label={`Member ${i + 1} role`} placeholder="What this member is good at" value={m.role} onChange={(e) => update({ role: e.target.value })} />
+                </div>
+              );
+            })}
+            <Button size="sm" icon={<Plus className="size-3.5" />} onClick={() => set("members", [...((config.members as unknown[]) ?? []), { name: `member${((config.members as unknown[]) ?? []).length + 1}`, agent_id: "", role: "" }])}>
+              Add member
+            </Button>
+          </fieldset>
+          <Field label="Max delegations" hint="Hard budget (1-20) for how many tasks the supervisor may hand out.">
+            {(p) => <Input {...p} type="number" min={1} max={20} value={Number(config.max_delegations ?? 4)} onChange={(e) => set("max_delegations", Number(e.target.value))} />}
+          </Field>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={!!config.share_task_with_members} onChange={(e) => set("share_task_with_members", e.target.checked)} /> Share the overall task with members
+          </label>
+        </>
+      )}
+      {type !== "start" && type !== "end" && (
+        <fieldset className="grid grid-cols-2 gap-2">
+          <legend className="mb-1 text-sm font-medium">On failure</legend>
+          <Field label="Retries">
+            {(p) => <Input {...p} type="number" min={0} max={3} value={retries} onChange={(e) => onChange({ retries: Math.max(0, Math.min(3, Number(e.target.value))) })} />}
+          </Field>
+          <Field label="Then">
+            {(p) => (
+              <Select {...p} value={onError} onChange={(e) => onChange({ onError: e.target.value as "fail" | "continue" })}>
+                <option value="fail">Fail the run</option>
+                <option value="continue">Continue (empty output)</option>
+              </Select>
+            )}
+          </Field>
+        </fieldset>
       )}
       {(output || error) && (
         <div>

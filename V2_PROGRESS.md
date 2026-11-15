@@ -13,8 +13,8 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 | 5 | Tools & MCP | done | 46e5391 |
 | 6 | Human approval | done | 102a708 |
 | 7 | Knowledge & memory | done | 1440a68 |
-| 8 | Visual workflows | done | (this commit) |
-| 9 | Multi-agent teams | pending | – |
+| 8 | Visual workflows | done | 092036d |
+| 9 | Multi-agent teams | done | (this commit) |
 | 10 | Analytics & observability | pending | – |
 | 11 | SDK packaging | pending | – |
 | 12 | Production hardening | pending | – |
@@ -113,6 +113,14 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 - Limitations (documented): no loops; an approval node inside a parallel branch resumes only its own branch; agent nodes cannot pause for tool approval (use an Approval node).
 - New deps (justified): `@xyflow/react` (maintained React Flow), `@dagrejs/dagre` (auto-layout).
 - Tests: backend 323 passed / 2 skipped (+40: spec validation matrix, expression sandbox, engine behaviours, API end-to-end through the worker incl. agent/tool nodes, approval continuation, RBAC/isolation, templates); frontend 30 files / 162 passed (+9: graph helpers, editor interactions, template creation, live run). ruff, format, mypy, typecheck, lint, build clean.
+
+### Phase 9: Multi-agent teams
+- `supervisor` workflow node: the coordinating model delegates to member agents through `delegate`/`finish` tools under a hard delegation budget (at most 20, plus a turn bound). Members are isolated by default and run their published version with their own permissions and limits.
+- Trace: `agent.delegated` (with the supervisor's stated reason) and `agent.result` events are mirrored in TypeScript and shown in the run log.
+- Node resilience: `retries` (0-3, with backoff) and `on_error: continue` on every node; `node.failed` reports `will_retry` and `continued`.
+- Studio: a Team node in the palette, an inspector for members (agent, role), the delegation budget and task sharing, and "On failure" settings on every node.
+- Sequential and parallel teams are composed from agent, parallel and join nodes; there is no separate engine.
+- Tests: backend 330 passed / 2 skipped (+7: delegation flow, context isolation, shared task, budget, unknown and failing members, endless supervisor, unique names, retries, continue-on-error, end-to-end API through the worker, validation of unknown member agents); frontend 165 passed (+3). ruff, mypy, typecheck, lint and build clean.
 
 ## Known issues
 - Main frontend bundle is ~678 kB minified (203 kB gzip); the workflow editor is split out; further route splitting is a Phase 12 task.

@@ -112,6 +112,11 @@ Save-time checks: unknown tool / invalid tool config / unknown provider / limits
 
 Workflow runs emit `node.started` / `node.completed` (output preview, duration) / `node.failed`, then a terminal `run.completed` (with `output`), `run.failed` (`code: node_failed | timeout | …`), `run.cancelled` or `run.waiting_approval`. They use the same queue, worker, cancel, resume and approval endpoints as chat runs (an approval step creates an approval request with `tool_name: "workflow.approval"`; the continuation resumes after that node without re-running earlier steps).
 
+### Multi-agent teams (V2)
+Teams are workflow nodes, not a separate system. A `supervisor` node has `{provider, connection_id, model, instructions, task, members[{name, agent_id, role}], max_delegations (1-20), share_task_with_members}`. The supervisor model gets two tools: `delegate(member, task, reason)` and `finish(answer)`. Each delegation runs the member agent's published version through `build_agent_run`, so its own tool permissions and limits still apply. By default the member sees only its delegated task. The delegation budget is enforced; unknown members and calls over the budget are returned to the supervisor as tool errors. A failing member is reported to the supervisor rather than failing the run. Sequential and parallel-with-aggregator teams are ordinary agent nodes, parallel nodes and joins.
+Events: `agent.delegated {node_id, member, agent_id, task, reason}` and `agent.result {node_id, member, output, duration_ms, ok}`. The `reason` is a short justification the supervisor writes explicitly as a tool argument, not hidden reasoning.
+Every node also accepts `retries` (0-3) and `on_error` (`fail` | `continue`); `node.failed` carries `will_retry` and `continued`.
+
 ### Knowledge & memory (V2)
 | Method | Path | Notes |
 |---|---|---|

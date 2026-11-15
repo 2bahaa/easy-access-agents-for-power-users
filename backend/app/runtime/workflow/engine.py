@@ -26,6 +26,7 @@ from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from typing import Annotated, Any, Protocol, TypedDict
 
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
 
 from app.runtime.events import AgentEvent, agent_event_adapter
@@ -40,6 +41,7 @@ from app.runtime.workflow.spec import (
     MemoryNodeConfig,
     NodeSpec,
     RouterConfig,
+    SupervisorConfig,
     ToolNodeConfig,
     WorkflowSpec,
     parse_config,
@@ -75,6 +77,15 @@ class WorkflowServices(Protocol):
     ) -> str: ...
 
     async def memory(self, agent_id: uuid.UUID, action: str, text: str) -> str: ...
+
+    async def chat(
+        self,
+        provider: str,
+        connection_id: uuid.UUID | None,
+        model: str,
+        messages: list[BaseMessage],
+        tools: list[dict[str, Any]],
+    ) -> AIMessage: ...
 
 
 @dataclass(frozen=True)
@@ -279,14 +290,32 @@ class WorkflowRun:
             outputs = dict(state.get("outputs") or {})
             self._emit("node.started", node_id=node.id, node_type=node.type, label=node.label)
             began = time.perf_counter()
-            try:
-                value, extra = await self._run_node(node, outputs)
-            except NodeError as e:
-                self._emit("node.failed", node_id=node.id, error=str(e))
-                raise
-            except ExpressionError as e:
-                self._emit("node.failed", node_id=node.id, error=str(e))
-                raise NodeError(f"{node.label or node.id}: {e}") from None
+            attempt = 0
+            while True:
+                try:
+                    value, extra = await self._run_node(node, outputs)
+                    break
+                except (NodeError, ExpressionError) as e:
+                    message = (
+                        str(e) if isinstance(e, NodeError) else f"{node.label or node.id}: {e}"
+                    )
+                    retry = attempt < node.retries
+                    proceed = not retry and node.on_error == "continue"
+                    self._emit(
+                        "node.failed",
+                        node_id=node.id,
+                        error=message,
+                        will_retry=retry,
+                        continued=proceed,
+                    )
+                    if retry:
+                        attempt += 1
+                        await asyncio.sleep(min(0.5 * attempt, 2.0))
+                        continue
+                    if proceed:
+                        value, extra = "", {}
+                        break
+                    raise NodeError(message) from None
             if extra.get("paused"):
                 return {"paused": [node.id], "path": [node.id]}
             self.result.executed += 1
@@ -356,6 +385,9 @@ class WorkflowRun:
                 return "", {"paused": True}
             if node.type == "parallel":
                 return "", {}
+            if node.type == "supervisor":
+                assert isinstance(cfg, SupervisorConfig)
+                return await self._supervise(node, cfg, t(cfg.task)), {}
         except NodeError:
             raise
         except ExpressionError:
@@ -364,6 +396,113 @@ class WorkflowRun:
             logger.warning("Workflow node %s failed: %s", node.id, e)
             raise NodeError(f"{node.label or node.id} failed: {str(e)[:300]}") from None
         raise NodeError(f"Unknown node type {node.type}")  # pragma: no cover
+
+    async def _supervise(self, node: NodeSpec, cfg: SupervisorConfig, task: str) -> str:
+        """Supervisor loop: the model delegates to members (bounded) and then finishes."""
+        members = {m.name: m for m in cfg.members}
+        roster = "\n".join(f"- {m.name}: {m.role or 'general assistant'}" for m in cfg.members)
+        system = (
+            f"{cfg.instructions}\n\nYou coordinate a team. Members:\n{roster}\n\n"
+            "Call `delegate` to give one member a self-contained task (say briefly why), read the "
+            f"result, and call `finish` with the final answer. At most {cfg.max_delegations} "
+            "delegations."
+        ).strip()
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "delegate",
+                    "description": "Give a team member a task.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "member": {"type": "string", "enum": list(members)},
+                            "task": {"type": "string"},
+                            "reason": {
+                                "type": "string",
+                                "description": "One short sentence: why this member",
+                            },
+                        },
+                        "required": ["member", "task"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "finish",
+                    "description": "Return the team's final answer.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"answer": {"type": "string"}},
+                        "required": ["answer"],
+                    },
+                },
+            },
+        ]
+        messages: list[BaseMessage] = [SystemMessage(system), HumanMessage(task)]
+        delegations = 0
+        for _ in range(cfg.max_delegations * 2 + 2):  # rejected calls also use turns
+            reply = await self.services.chat(
+                cfg.provider, cfg.connection_id, cfg.model, messages, tools
+            )
+            messages.append(reply)
+            if not reply.tool_calls:
+                return str(reply.text)  # answered directly
+            for call in reply.tool_calls:
+                args = call.get("args") or {}
+                call_id = call.get("id") or uuid.uuid4().hex
+                if call["name"] == "finish":
+                    return str(args.get("answer", ""))
+                if call["name"] != "delegate":
+                    messages.append(
+                        ToolMessage(f"Error: unknown tool {call['name']}", tool_call_id=call_id)
+                    )
+                    continue
+                member = members.get(str(args.get("member", "")))
+                if member is None:
+                    messages.append(
+                        ToolMessage(
+                            f"Error: no member named {args.get('member')!r}", tool_call_id=call_id
+                        )
+                    )
+                    continue
+                if delegations >= cfg.max_delegations:
+                    messages.append(
+                        ToolMessage(
+                            "Error: delegation limit reached; call finish now.",
+                            tool_call_id=call_id,
+                        )
+                    )
+                    continue
+                delegations += 1
+                member_task = str(args.get("task", ""))[:10_000]
+                if cfg.share_task_with_members:
+                    member_task = f"Overall goal: {task}\n\nYour task: {member_task}"
+                self._emit(
+                    "agent.delegated",
+                    node_id=node.id,
+                    member=member.name,
+                    agent_id=member.agent_id,
+                    task=member_task[:PREVIEW],
+                    reason=str(args.get("reason", ""))[:300],
+                )
+                began = time.perf_counter()
+                try:
+                    result = await self.services.run_agent(member.agent_id, member_task, False)
+                    ok = True
+                except NodeError as e:  # a failing member is reported to the supervisor, not fatal
+                    result, ok = f"Error: {e}", False
+                self._emit(
+                    "agent.result",
+                    node_id=node.id,
+                    member=member.name,
+                    output=_preview(result),
+                    duration_ms=int((time.perf_counter() - began) * 1000),
+                    ok=ok,
+                )
+                messages.append(ToolMessage(result, tool_call_id=call_id))
+        raise NodeError("The supervisor did not finish within its delegation budget")
 
     async def _classify(self, cfg: RouterConfig, text: str) -> str:
         routes = ", ".join(cfg.routes)

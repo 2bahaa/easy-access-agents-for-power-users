@@ -105,6 +105,28 @@ class NodeFailed(_EventBase):
     type: Literal["node.failed"] = "node.failed"
     node_id: str
     error: str
+    will_retry: bool = False
+    continued: bool = False  # on_error="continue": the workflow went on
+
+
+class AgentDelegated(_EventBase):
+    """Workflow supervisor handed a task to a member agent (with its stated reason)."""
+
+    type: Literal["agent.delegated"] = "agent.delegated"
+    node_id: str
+    member: str
+    agent_id: uuid.UUID
+    task: str
+    reason: str = ""
+
+
+class AgentResult(_EventBase):
+    type: Literal["agent.result"] = "agent.result"
+    node_id: str
+    member: str
+    output: str  # preview
+    duration_ms: int
+    ok: bool = True
 
 
 class RunCompleted(_EventBase):
@@ -156,6 +178,8 @@ AgentEvent = Annotated[
     | NodeStarted
     | NodeCompleted
     | NodeFailed
+    | AgentDelegated
+    | AgentResult
     | RunCompleted
     | RunFailed
     | RunCancelled
