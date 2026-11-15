@@ -8,6 +8,7 @@ import signal
 from app.config import get_settings
 from app.crypto import SecretBox
 from app.db.session import create_engine, create_sessionmaker
+from app.observability import configure_logging, configure_tracing
 from app.runtime.providers.registry import build_default_providers
 from app.services.provider_service import ProviderResolver
 from app.tools.registry import build_default_registry
@@ -44,8 +45,12 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    _settings = get_settings()
+    configure_logging(_settings.log_format, _settings.log_level)
+    configure_tracing(
+        _settings.otel_enabled,
+        _settings.otel_exporter_otlp_endpoint,
+        f"{_settings.otel_service_name}-worker",
     )
     with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(main())

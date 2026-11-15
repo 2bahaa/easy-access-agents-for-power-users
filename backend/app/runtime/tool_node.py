@@ -14,6 +14,7 @@ from langchain_core.messages import AIMessage, ToolCall, ToolMessage
 from langgraph.config import get_stream_writer
 from pydantic import ValidationError
 
+from app.observability import tracer
 from app.runtime.events import ToolFailureKind
 from app.runtime.limits import EffectiveLimits
 from app.runtime.state import AgentState
@@ -167,7 +168,12 @@ class ToolNode:
         write(("tool.call.started", {"call_id": call_id, "tool": name, "args": raw_args}))
         started = time.perf_counter()
         try:
-            result = await self._run(name, raw_args)
+            with tracer.start_as_current_span("tool.call", attributes={"tool.name": name}) as span:
+                try:
+                    result = await self._run(name, raw_args)
+                except _ToolFailure as f:
+                    span.set_attribute("tool.error_kind", f.kind)
+                    raise
         except _ToolFailure as f:
             write(
                 (

@@ -28,6 +28,7 @@ from app.api.routers import (
 from app.config import Settings, get_settings
 from app.crypto import SecretBox
 from app.db.session import create_engine, create_sessionmaker
+from app.observability import configure_logging, configure_tracing
 from app.runtime.providers.registry import ProviderRegistry, build_default_providers
 from app.services.provider_service import ProviderFactory, ProviderResolver
 from app.services.skill_service import seed_builtin_skills
@@ -46,6 +47,11 @@ def create_app(
 ) -> FastAPI:
     """Build the app. Registries can be injected (tests use a fake provider)."""
     settings = settings or get_settings()
+    if settings.log_format == "json":
+        configure_logging("json", settings.log_level)
+    configure_tracing(
+        settings.otel_enabled, settings.otel_exporter_otlp_endpoint, settings.otel_service_name
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -98,6 +104,7 @@ def create_app(
     for module in (health, auth, org, agents, skills, tools, providers, conversations, runs):
         app.include_router(module.router, prefix="/api")
     app.include_router(agents.templates_router, prefix="/api")
+    app.include_router(runs.analytics_router, prefix="/api")
     app.include_router(capabilities.router, prefix="/api")
     app.include_router(approvals.router, prefix="/api")
     app.include_router(knowledge.router, prefix="/api")

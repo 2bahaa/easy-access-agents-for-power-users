@@ -6,10 +6,54 @@ from fastapi.responses import StreamingResponse
 
 from app.api.deps import PrincipalDep, SessionDep, SessionFactoryDep, SettingsDep
 from app.api.sse import SSE_HEADERS, follow_run_sse
-from app.schemas.runs import RunEventRead, RunRead
-from app.services import run_service
+from app.schemas.runs import AnalyticsSummary, RunEventRead, RunListItem, RunPage, RunRead
+from app.services import analytics_service, run_service
 
 router = APIRouter(prefix="/runs", tags=["runs"])
+analytics_router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+
+@router.get("")
+async def list_runs(
+    principal: PrincipalDep,
+    session: SessionDep,
+    kind: Annotated[str | None, Query(pattern="^(agent|workflow)$")] = None,
+    status: Annotated[str | None, Query(max_length=32)] = None,
+    agent_id: uuid.UUID | None = None,
+    workflow_id: uuid.UUID | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> RunPage:
+    """Execution history for the workspace, newest first."""
+    rows, total = await analytics_service.list_runs(
+        session,
+        principal.workspace_id,
+        kind=kind,
+        status=status,
+        agent_id=agent_id,
+        workflow_id=workflow_id,
+        limit=limit,
+        offset=offset,
+    )
+    items = [
+        RunListItem.model_validate(run).model_copy(
+            update={"agent_name": agent_name, "workflow_name": workflow_name}
+        )
+        for run, agent_name, workflow_name in rows
+    ]
+    return RunPage(items=items, total=total)
+
+
+@analytics_router.get("/summary")
+async def analytics_summary(
+    principal: PrincipalDep,
+    session: SessionDep,
+    days: Annotated[int, Query(ge=1, le=90)] = 7,
+) -> AnalyticsSummary:
+    """Usage, reliability and latency over the last `days`, from recorded runs only."""
+    return AnalyticsSummary.model_validate(
+        await analytics_service.summary(session, principal.workspace_id, days)
+    )
 
 
 @router.get("/{run_id}")

@@ -14,8 +14,8 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 | 6 | Human approval | done | 102a708 |
 | 7 | Knowledge & memory | done | 1440a68 |
 | 8 | Visual workflows | done | 092036d |
-| 9 | Multi-agent teams | done | (this commit) |
-| 10 | Analytics & observability | pending | – |
+| 9 | Multi-agent teams | done | 7f8ec7b |
+| 10 | Analytics & observability | done | (this commit) |
 | 11 | SDK packaging | pending | – |
 | 12 | Production hardening | pending | – |
 
@@ -121,6 +121,13 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 - Studio: a Team node in the palette, an inspector for members (agent, role), the delegation budget and task sharing, and "On failure" settings on every node.
 - Sequential and parallel teams are composed from agent, parallel and join nodes; there is no separate engine.
 - Tests: backend 330 passed / 2 skipped (+7: delegation flow, context isolation, shared task, budget, unknown and failing members, endless supervisor, unique names, retries, continue-on-error, end-to-end API through the worker, validation of unknown member agents); frontend 165 passed (+3). ruff, mypy, typecheck, lint and build clean.
+
+### Phase 10: Analytics & observability
+- `GET /runs` (filtered, paginated execution history with names) and `GET /analytics/summary` (status/kind counts, success rate, provider-reported tokens, avg/p95 latency, zero-filled daily series, top agents, top tools). All figures come from recorded runs; when there is no data the API returns `null` and the UI shows "—".
+- Studio: a **Runs** page (usage panel with a 1/7/30-day window and daily chart; history table with kind and status filters and pagination; a detail panel with error, output and the replayed timeline, or the node log for workflows; Cancel for active runs; "Run again" with the same inputs for workflows) and a 7-day activity card on Overview.
+- Observability: JSON structured logs with `run_id` and `trace_id`; OpenTelemetry spans for runs and tool calls; OTLP/HTTP exporter when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. Tracing is off by default.
+- New deps (justified): `opentelemetry-api`, `opentelemetry-sdk`, `opentelemetry-exporter-otlp-proto-http` (vendor-neutral tracing; works with Jaeger, Tempo, Langfuse and others).
+- Tests: backend 333 passed / 2 skipped (+3: history filters/pagination/tenant isolation, summary figures checked against the fake provider's reported usage, spans captured with an in-memory exporter, JSON log context); frontend 167 passed (+2). ruff, mypy, typecheck, lint and build clean.
 
 ## Known issues
 - Main frontend bundle is ~678 kB minified (203 kB gzip); the workflow editor is split out; further route splitting is a Phase 12 task.

@@ -1,8 +1,25 @@
-import { ArrowRight, BookOpen, Bot, Cpu, MessageSquare, Plus, Wrench } from "lucide-react";
+import {
+  ArrowRight,
+  BookOpen,
+  Bot,
+  Cpu,
+  MessageSquare,
+  Plus,
+  Wrench,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
-import { useAgents, useAllConversations, useHealth, useModels, useSkills, useTools } from "../../api/queries";
+import {
+  useAgents,
+  useAllConversations,
+  useAnalytics,
+  useHealth,
+  useModels,
+  useSkills,
+  useTools,
+} from "../../api/queries";
+import { UsageChart } from "../../components/UsageChart";
 import { Badge } from "../../components/ui/Badge";
 import { Card } from "../../components/ui/Card";
 import { LinkButton } from "../../components/ui/LinkButton";
@@ -21,6 +38,7 @@ export function OverviewPage() {
   const conversations = useAllConversations();
   const health = useHealth();
   const models = useModels("ollama");
+  const usage = useAnalytics(7);
 
   const agentName = new Map((agents.data ?? []).map((a) => [a.id, a.name]));
   const toolModels = models.data?.filter((m) => m.supports_tools).length;
@@ -31,16 +49,44 @@ export function OverviewPage() {
         title="Overview"
         description="Your agents, recent activity and the health of the services they depend on."
         actions={
-          <LinkButton to="/agents/new" variant="primary" icon={<Plus className="size-4" />}>
+          <LinkButton
+            to="/agents/new"
+            variant="primary"
+            icon={<Plus className="size-4" />}
+          >
             New agent
           </LinkButton>
         }
       />
 
-      <section aria-label="Key metrics" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Metric label="Agents" icon={<Bot />} value={agents.data?.length} loading={agents.isPending} error={agents.isError} to="/agents" />
-        <Metric label="Skills" icon={<BookOpen />} value={skills.data?.length} loading={skills.isPending} error={skills.isError} to="/skills" />
-        <Metric label="Tools" icon={<Wrench />} value={tools.data?.length} loading={tools.isPending} error={tools.isError} to="/tools" />
+      <section
+        aria-label="Key metrics"
+        className="grid grid-cols-2 gap-3 lg:grid-cols-4"
+      >
+        <Metric
+          label="Agents"
+          icon={<Bot />}
+          value={agents.data?.length}
+          loading={agents.isPending}
+          error={agents.isError}
+          to="/agents"
+        />
+        <Metric
+          label="Skills"
+          icon={<BookOpen />}
+          value={skills.data?.length}
+          loading={skills.isPending}
+          error={skills.isError}
+          to="/skills"
+        />
+        <Metric
+          label="Tools"
+          icon={<Wrench />}
+          value={tools.data?.length}
+          loading={tools.isPending}
+          error={tools.isError}
+          to="/tools"
+        />
         <Metric
           label="Conversations"
           icon={<MessageSquare />}
@@ -50,10 +96,43 @@ export function OverviewPage() {
         />
       </section>
 
+      <Card className="mt-6 p-5" aria-label="Activity">
+        <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+          <h2 className="text-[15px] font-semibold tracking-tight">
+            Last 7 days
+          </h2>
+          {usage.isPending ? (
+            <Skeleton className="h-4 w-48" />
+          ) : usage.isError ? (
+            <p className="text-sm text-muted">Activity is unavailable.</p>
+          ) : (
+            <p className="text-sm text-muted">
+              {usage.data.runs} run(s)
+              {usage.data.success_rate !== null &&
+                ` · ${Math.round(usage.data.success_rate * 100)}% succeeded`}
+              {` · ${usage.data.tool_calls} tool call(s)`}
+              {usage.data.input_tokens + usage.data.output_tokens > 0 &&
+                ` · ${(usage.data.input_tokens + usage.data.output_tokens).toLocaleString()} tokens`}
+            </p>
+          )}
+          <Link
+            to="/runs"
+            className="ml-auto text-sm text-brand-600 hover:underline"
+          >
+            View runs
+          </Link>
+        </div>
+        {usage.data && (
+          <UsageChart className="mt-3 h-16" daily={usage.data.daily} />
+        )}
+      </Card>
+
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <header className="flex items-center justify-between border-b border-line px-5 py-4">
-            <h2 className="text-[15px] font-semibold tracking-tight">Recent conversations</h2>
+            <h2 className="text-[15px] font-semibold tracking-tight">
+              Recent conversations
+            </h2>
           </header>
           {conversations.isPending ? (
             <ul className="divide-y divide-line" aria-busy="true">
@@ -65,7 +144,9 @@ export function OverviewPage() {
               ))}
             </ul>
           ) : conversations.isError ? (
-            <p className="px-5 py-8 text-sm text-muted">Conversations are unavailable — the API could not be reached.</p>
+            <p className="px-5 py-8 text-sm text-muted">
+              Conversations are unavailable — the API could not be reached.
+            </p>
           ) : conversations.data.length === 0 ? (
             <div className="p-5">
               <EmptyState
@@ -84,10 +165,16 @@ export function OverviewPage() {
                   >
                     <MessageSquare className="size-4 shrink-0 text-subtle" />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">{c.title || "Untitled conversation"}</span>
-                      <span className="block truncate text-xs text-muted">{agentName.get(c.agent_id) ?? "Agent"}</span>
+                      <span className="block truncate text-sm font-medium">
+                        {c.title || "Untitled conversation"}
+                      </span>
+                      <span className="block truncate text-xs text-muted">
+                        {agentName.get(c.agent_id) ?? "Agent"}
+                      </span>
                     </span>
-                    <span className="shrink-0 text-xs text-subtle">{relativeTime(c.updated_at)}</span>
+                    <span className="shrink-0 text-xs text-subtle">
+                      {relativeTime(c.updated_at)}
+                    </span>
                     <ArrowRight className="size-3.5 shrink-0 text-subtle opacity-0 transition-opacity group-hover:opacity-100" />
                   </Link>
                 </li>
@@ -98,12 +185,29 @@ export function OverviewPage() {
 
         <Card>
           <header className="border-b border-line px-5 py-4">
-            <h2 className="text-[15px] font-semibold tracking-tight">Services &amp; models</h2>
+            <h2 className="text-[15px] font-semibold tracking-tight">
+              Services &amp; models
+            </h2>
           </header>
           <ul className="space-y-3 px-5 py-4 text-sm">
-            <ServiceRow label="API" state={health.isPending ? "pending" : health.isError ? "error" : "ok"} />
-            <ServiceRow label="Database" state={health.data?.database ?? (health.isError ? "error" : "pending")} />
-            <ServiceRow label="Ollama" state={health.data?.ollama ?? (health.isError ? "error" : "pending")} />
+            <ServiceRow
+              label="API"
+              state={
+                health.isPending ? "pending" : health.isError ? "error" : "ok"
+              }
+            />
+            <ServiceRow
+              label="Database"
+              state={
+                health.data?.database ?? (health.isError ? "error" : "pending")
+              }
+            />
+            <ServiceRow
+              label="Ollama"
+              state={
+                health.data?.ollama ?? (health.isError ? "error" : "pending")
+              }
+            />
           </ul>
           <div className="border-t border-line px-5 py-4">
             <p className="flex items-center gap-2 text-sm font-medium">
@@ -112,7 +216,9 @@ export function OverviewPage() {
             {models.isPending ? (
               <Skeleton className="mt-2 h-4 w-32" />
             ) : models.isError ? (
-              <p className="mt-1 text-sm text-muted">Model list unavailable — is Ollama running?</p>
+              <p className="mt-1 text-sm text-muted">
+                Model list unavailable — is Ollama running?
+              </p>
             ) : (
               <p className="mt-1 text-sm text-muted">
                 {models.data.length} installed · {toolModels} support tools
@@ -149,18 +255,28 @@ function Metric({
       {loading ? (
         <Skeleton className="mt-2 h-7 w-12" />
       ) : (
-        <p className="mt-1.5 text-2xl font-semibold tracking-tight tabular-nums" title={error ? "Unavailable" : undefined}>
+        <p
+          className="mt-1.5 text-2xl font-semibold tracking-tight tabular-nums"
+          title={error ? "Unavailable" : undefined}
+        >
           {error || value === undefined ? "—" : value}
         </p>
       )}
     </Card>
   );
   return to ? (
-    <Link to={to} aria-label={`${label}: ${loading ? "loading" : error ? "unavailable" : value}`}>
+    <Link
+      to={to}
+      aria-label={`${label}: ${loading ? "loading" : error ? "unavailable" : value}`}
+    >
       {body}
     </Link>
   ) : (
-    <div aria-label={`${label}: ${loading ? "loading" : error ? "unavailable" : value}`}>{body}</div>
+    <div
+      aria-label={`${label}: ${loading ? "loading" : error ? "unavailable" : value}`}
+    >
+      {body}
+    </div>
   );
 }
 

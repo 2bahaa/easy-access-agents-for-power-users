@@ -218,6 +218,43 @@ export interface Conversation extends ConversationSummary {
   runs: Run[];
 }
 
+export interface RunListItem extends Omit<Run, "conversation_id" | "agent_id"> {
+  conversation_id: string | null;
+  agent_id: string | null;
+  agent_name: string | null;
+  workflow_name: string | null;
+}
+
+export interface RunPage {
+  items: RunListItem[];
+  total: number;
+}
+
+export interface RunFilters {
+  kind?: "agent" | "workflow";
+  status?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/** Usage over a window, computed by the API from recorded runs only. */
+export interface AnalyticsSummary {
+  days: number;
+  runs: number;
+  by_status: Record<string, number>;
+  by_kind: Record<string, number>;
+  success_rate: number | null;
+  tool_calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  runs_without_usage: number;
+  avg_duration_ms: number | null;
+  p95_duration_ms: number | null;
+  daily: Array<{ date: string; runs: number; failed: number; tokens: number }>;
+  top_agents: Array<{ agent_id: string; name: string; runs: number; failed: number }>;
+  top_tools: Array<{ tool: string; calls: number; failed: number }>;
+}
+
 export interface RunEventRecord {
   seq: number;
   type: string;

@@ -4,6 +4,7 @@ import {
   Building2,
   Database,
   GitFork,
+  History,
   LayoutDashboard,
   Plug,
   ShieldCheck,
@@ -42,7 +43,10 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Run",
-    items: [{ to: "/approvals", label: "Approvals", icon: ShieldCheck, keywords: "review human in the loop pending" }],
+    items: [
+      { to: "/runs", label: "Runs", icon: History, keywords: "history executions logs timeline usage" },
+      { to: "/approvals", label: "Approvals", icon: ShieldCheck, keywords: "review human in the loop pending" },
+    ],
   },
   {
     label: "Admin",

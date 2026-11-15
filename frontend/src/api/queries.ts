@@ -8,6 +8,7 @@ import type {
   McpServerCreate,
   ProviderConnectionWrite,
   Role,
+  RunFilters,
   SkillWrite,
 } from "./types";
 
@@ -24,6 +25,8 @@ export const keys = {
   conversations: (agentId: string) => ["conversations", { agentId }] as const,
   conversation: (id: string) => ["conversation", id] as const,
   runEvents: (runId: string) => ["runs", runId, "events"] as const,
+  runs: (filters: object) => ["runs", "list", filters] as const,
+  analytics: (days: number) => ["analytics", days] as const,
   members: ["members"] as const,
   workflows: ["workflows"] as const,
   workflow: (id: string) => ["workflows", id] as const,
@@ -171,6 +174,12 @@ export const useConversation = (id: string | undefined) =>
     queryFn: () => api.getConversation(id!),
     enabled: !!id,
   });
+
+export const useRuns = (filters: RunFilters) =>
+  useQuery({ queryKey: keys.runs(filters), queryFn: () => api.listRuns(filters), placeholderData: (prev) => prev });
+
+export const useAnalytics = (days: number) =>
+  useQuery({ queryKey: keys.analytics(days), queryFn: () => api.analyticsSummary(days) });
 
 /** Persisted timeline of a finished run (immutable once the run has ended). */
 export const useRunEvents = (runId: string | undefined, enabled = true) =>

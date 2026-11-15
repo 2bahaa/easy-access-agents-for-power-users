@@ -32,3 +32,50 @@ class RunEventRead(BaseModel):
     type: str
     payload: dict[str, Any]
     created_at: datetime
+
+
+class RunListItem(RunRead):
+    agent_name: str | None = None
+    workflow_name: str | None = None
+
+
+class RunPage(BaseModel):
+    items: list[RunListItem]
+    total: int
+
+
+class DailyUsage(BaseModel):
+    date: str
+    runs: int
+    failed: int
+    tokens: int
+
+
+class AgentUsage(BaseModel):
+    agent_id: uuid.UUID
+    name: str
+    runs: int
+    failed: int
+
+
+class ToolUsage(BaseModel):
+    tool: str
+    calls: int
+    failed: int
+
+
+class AnalyticsSummary(BaseModel):
+    days: int
+    runs: int
+    by_status: dict[str, int]
+    by_kind: dict[str, int]
+    success_rate: float | None  # completed / (completed + failed); None without data
+    tool_calls: int
+    input_tokens: int
+    output_tokens: int
+    runs_without_usage: int  # runs whose provider reported no token usage
+    avg_duration_ms: int | None
+    p95_duration_ms: int | None
+    daily: list[DailyUsage]
+    top_agents: list[AgentUsage]
+    top_tools: list[ToolUsage]

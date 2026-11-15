@@ -3,6 +3,9 @@ import { API_BASE_URL, authFetch } from "./session";
 import { readSSE } from "./sse";
 import type {
   Agent,
+  AnalyticsSummary,
+  RunFilters,
+  RunPage,
   AgentSummary,
   AgentWrite,
   Conversation,
@@ -192,6 +195,12 @@ export const api = {
   deleteConversation: (id: string) => request<void>(`/conversations/${id}`, { method: "DELETE" }),
 
   getRun: (id: string) => request<Run>(`/runs/${id}`),
+  listRuns: (filters: RunFilters = {}) => {
+    const q = new URLSearchParams(Object.entries(filters).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]));
+    const qs = q.toString();
+    return request<RunPage>(`/runs${qs ? `?${qs}` : ""}`);
+  },
+  analyticsSummary: (days: number) => request<AnalyticsSummary>(`/analytics/summary?days=${days}`),
   listRunEvents: (id: string) => request<RunEventRecord[]>(`/runs/${id}/events`),
   cancelRun: (id: string) => request<void>(`/runs/${id}/cancel`, { method: "POST" }),
   listProviders: () => request<ProviderInfo[]>("/providers"),

@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -75,6 +76,13 @@ class Settings(BaseSettings):
     approval_ttl_s: int = Field(default=86_400, ge=60)
 
     # Comma-separated list of allowed browser origins.
+    # Observability: LOG_FORMAT=json for structured logs; traces only when OTEL_ENABLED.
+    log_format: Literal["text", "json"] = "text"
+    log_level: str = "INFO"
+    otel_enabled: bool = False
+    otel_exporter_otlp_endpoint: str = ""  # e.g. http://127.0.0.1:4318; empty = console
+    otel_service_name: str = "easy-access-agents"
+
     cors_origins: str = "http://localhost:5173"
 
     @field_validator("workspace_dir", "skills_dir")

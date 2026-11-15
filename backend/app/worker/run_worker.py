@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.db.models import Run
+from app.observability import current_run_id, tracer
 from app.runtime.events import TERMINAL_TYPES, AgentEvent
 from app.runtime.executor import AgentRun
 from app.services import (
@@ -230,11 +231,16 @@ class RunWorker:
             return
 
         self._active[run_id] = agent_run
+        token = current_run_id.set(str(run_id))
         try:
-            if cancel_requested:  # cancelled between queueing and claiming
-                agent_run.cancel()
-            await self._drive(run_id, agent_run, kind)
+            with tracer.start_as_current_span(
+                f"run.{kind}", attributes={"run.id": str(run_id), "run.kind": kind}
+            ):
+                if cancel_requested:  # cancelled between queueing and claiming
+                    agent_run.cancel()
+                await self._drive(run_id, agent_run, kind)
         finally:
+            current_run_id.reset(token)
             self._active.pop(run_id, None)
 
     async def _drive(self, run_id: uuid.UUID, agent_run: Any, kind: str = "agent") -> None:

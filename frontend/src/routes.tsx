@@ -8,6 +8,7 @@ import { OverviewPage } from "./features/overview/OverviewPage";
 import { SkillsPage } from "./features/skills/SkillsPage";
 import { ToolsPage } from "./features/tools/ToolsPage";
 import { ApprovalsPage } from "./features/approvals/ApprovalsPage";
+import { RunsPage } from "./features/runs/RunsPage";
 import { LoginPage, RegisterPage } from "./features/auth/AuthPages";
 import { KnowledgePage } from "./features/knowledge/KnowledgePage";
 import { LazyWorkflowEditor } from "./features/workflows/LazyWorkflowEditor";
@@ -39,6 +40,7 @@ export const routes: RouteObject[] = [
       { path: "skills/:skillId", element: <SkillsPage /> },
       { path: "tools", element: <ToolsPage /> },
       { path: "approvals", element: <ApprovalsPage /> },
+      { path: "runs", element: <RunsPage /> },
       { path: "knowledge", element: <KnowledgePage /> },
       { path: "workflows", element: <WorkflowsPage /> },
       { path: "workflows/:workflowId", element: <LazyWorkflowEditor /> },
