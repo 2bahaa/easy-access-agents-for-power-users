@@ -1,7 +1,7 @@
 import { teamSpec } from "./teamTemplates";
 
 const AGENTS = [
-  { id: "a1", name: "Researcher" },
+  { id: "a1", name: "Researcher", model: "llama3.2:3b" },
   { id: "a2", name: "Writer" },
 ];
 
@@ -14,6 +14,7 @@ describe("team templates", () => {
       { name: "writer", agent_id: "a2", role: "Writer" },
     ]);
     expect(spec.edges.map((e) => `${e.source}>${e.target}`)).toEqual(["start>team", "team>end"]);
+    expect(team.config.model).toBe("llama3.2:3b"); // the first member's model, not a hard-coded one
   });
 
   it("chains a sequential pipeline", () => {

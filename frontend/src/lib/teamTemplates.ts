@@ -11,6 +11,8 @@ export const TEAM_PATTERNS: Array<{ id: TeamPattern; name: string; description: 
 interface TeamAgent {
   id: string;
   name: string;
+  model?: string;
+  provider?: string;
 }
 
 const memberName = (name: string, i: number) => {
@@ -19,7 +21,8 @@ const memberName = (name: string, i: number) => {
 };
 
 /** A valid, runnable workflow implementing a multi-agent pattern with the chosen agents. */
-export function teamSpec(pattern: TeamPattern, agents: TeamAgent[], model = "qwen3:4b"): WorkflowSpec {
+/** Coordinator/aggregator models default to the first member's model (known to work locally). */
+export function teamSpec(pattern: TeamPattern, agents: TeamAgent[], model = agents[0]?.model ?? "qwen2.5:3b"): WorkflowSpec {
   const start: WorkflowNodeSpec = { id: "start", type: "start", label: "Task", config: { inputs: [{ name: "task", description: "" }] }, position: { x: 0, y: 0 } };
   const end = (output: string, x: number): WorkflowNodeSpec => ({ id: "end", type: "end", label: "Result", config: { output }, position: { x, y: 0 } });
 
