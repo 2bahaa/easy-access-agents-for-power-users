@@ -8,6 +8,7 @@ import { RouterProvider } from "react-router";
 import { ApiError } from "./api/client";
 import { ToastProvider } from "./components/ui/Toast";
 import { TooltipProvider } from "./components/ui/Tooltip";
+import { AuthProvider } from "./features/auth/AuthProvider";
 import { applyTheme } from "./lib/theme";
 import { createRouter } from "./routes";
 
@@ -28,11 +29,13 @@ const router = createRouter();
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <ToastProvider>
-        <TooltipProvider>
-          <RouterProvider router={router} />
-        </TooltipProvider>
-      </ToastProvider>
+      <AuthProvider>
+        <ToastProvider>
+          <TooltipProvider>
+            <RouterProvider router={router} />
+          </TooltipProvider>
+        </ToastProvider>
+      </AuthProvider>
     </QueryClientProvider>
   </StrictMode>,
 );

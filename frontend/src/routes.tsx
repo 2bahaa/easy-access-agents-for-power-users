@@ -7,11 +7,20 @@ import { NotFoundPage } from "./features/NotFoundPage";
 import { OverviewPage } from "./features/overview/OverviewPage";
 import { SkillsPage } from "./features/skills/SkillsPage";
 import { ToolsPage } from "./features/tools/ToolsPage";
+import { LoginPage, RegisterPage } from "./features/auth/AuthPages";
+import { RequireAuth } from "./features/auth/RequireAuth";
+import { SettingsPage } from "./features/settings/SettingsPage";
 import { AppLayout } from "./layout/AppLayout";
 
 export const routes: RouteObject[] = [
+  { path: "login", element: <LoginPage /> },
+  { path: "register", element: <RegisterPage /> },
   {
-    element: <AppLayout />,
+    element: (
+      <RequireAuth>
+        <AppLayout />
+      </RequireAuth>
+    ),
     children: [
       { index: true, element: <Navigate to="/overview" replace /> },
       { path: "overview", element: <OverviewPage /> },
@@ -24,6 +33,7 @@ export const routes: RouteObject[] = [
       { path: "skills", element: <SkillsPage /> },
       { path: "skills/:skillId", element: <SkillsPage /> },
       { path: "tools", element: <ToolsPage /> },
+      { path: "settings", element: <SettingsPage /> },
       { path: "*", element: <NotFoundPage /> },
     ],
   },

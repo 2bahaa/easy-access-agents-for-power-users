@@ -166,3 +166,69 @@ export interface RunEventRecord {
   payload: Record<string, unknown>;
   created_at: string;
 }
+
+// ---- auth & organization ----
+
+export type Role = "viewer" | "editor" | "admin" | "owner";
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: "bearer";
+  expires_at: string;
+}
+
+export interface Workspace {
+  id: string;
+  org_id: string;
+  name: string;
+  slug: string;
+}
+
+export interface OrgMembership {
+  id: string;
+  name: string;
+  role: Role;
+  workspaces: Workspace[];
+}
+
+export interface Me {
+  user: { id: string; email: string; name: string };
+  organizations: OrgMembership[];
+  current_workspace_id: string;
+  role: Role;
+}
+
+export interface Member {
+  user_id: string;
+  email: string;
+  name: string;
+  role: Role;
+  joined_at: string;
+}
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  prefix: string;
+  role: Role;
+  user_id: string;
+  created_at: string;
+  last_used_at: string | null;
+  expires_at: string | null;
+  revoked_at: string | null;
+}
+
+export interface ApiKeyCreated extends ApiKey {
+  token: string;
+}
+
+export interface AuditEntry {
+  id: number;
+  workspace_id: string | null;
+  actor_id: string | null;
+  action: string;
+  target_type: string | null;
+  target_id: string | null;
+  meta: Record<string, unknown>;
+  created_at: string;
+}

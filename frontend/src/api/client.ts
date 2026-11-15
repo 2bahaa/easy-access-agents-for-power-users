@@ -1,4 +1,5 @@
 import type { AgentEvent } from "./events";
+import { API_BASE_URL, authFetch } from "./session";
 import { readSSE } from "./sse";
 import type {
   Agent,
@@ -16,9 +17,17 @@ import type {
   SkillSummary,
   SkillWrite,
   ToolInfo,
+  ApiKey,
+  ApiKeyCreated,
+  AuditEntry,
+  Me,
+  Member,
+  Role,
+  TokenResponse,
+  Workspace,
 } from "./types";
 
-export const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? "/api";
+export { API_BASE_URL };
 
 /** Error carrying the backend's problem-JSON body. */
 export class ApiError extends Error {
@@ -72,7 +81,7 @@ async function toApiError(response: Response): Promise<ApiError> {
 }
 
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await authFetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
       Accept: "application/json",
@@ -88,14 +97,14 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
 /**
  * Send a chat message and stream the run's events (SSE over a POST response).
  * Errors before the stream starts (404/409/422) are thrown as ApiError; aborting the
- * signal closes the connection, which cancels the run on the server.
+ * signal only stops following — the run keeps executing (use `api.cancelRun`).
  */
 export async function* streamMessage(
   conversationId: string,
   content: string,
   signal?: AbortSignal,
 ): AsyncGenerator<AgentEvent> {
-  const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/messages`, {
+  const response = await authFetch(`${API_BASE_URL}/conversations/${conversationId}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
     body: JSON.stringify({ content }),
@@ -115,7 +124,7 @@ export async function* streamMessage(
  * stops following, the run keeps executing on the server.
  */
 export async function* followRun(runId: string, signal?: AbortSignal, after = 0): AsyncGenerator<AgentEvent> {
-  const response = await fetch(`${API_BASE_URL}/runs/${runId}/stream?after=${after}`, {
+  const response = await authFetch(`${API_BASE_URL}/runs/${runId}/stream?after=${after}`, {
     headers: { Accept: "text/event-stream" },
     signal,
   });
@@ -161,6 +170,26 @@ export const api = {
   listRunEvents: (id: string) => request<RunEventRecord[]>(`/runs/${id}/events`),
   cancelRun: (id: string) => request<void>(`/runs/${id}/cancel`, { method: "POST" }),
   listProviders: () => request<ProviderInfo[]>("/providers"),
+
+  // ---- auth & organization ----
+  login: (email: string, password: string) =>
+    request<TokenResponse>("/auth/login", json("POST", { email, password })),
+  register: (email: string, password: string, name: string) =>
+    request<TokenResponse>("/auth/register", json("POST", { email, password, name })),
+  logout: () => request<void>("/auth/logout", { method: "POST" }),
+  me: () => request<Me>("/auth/me"),
+  listWorkspaces: () => request<Workspace[]>("/workspaces"),
+  createWorkspace: (name: string) => request<Workspace>("/workspaces", json("POST", { name })),
+  listMembers: () => request<Member[]>("/members"),
+  addMember: (email: string, role: Role) => request<Member>("/members", json("POST", { email, role })),
+  updateMember: (userId: string, role: Role) =>
+    request<void>(`/members/${userId}`, json("PATCH", { role })),
+  removeMember: (userId: string) => request<void>(`/members/${userId}`, { method: "DELETE" }),
+  listApiKeys: () => request<ApiKey[]>("/api-keys"),
+  createApiKey: (name: string, role: Exclude<Role, "owner">, expiresInDays: number | null) =>
+    request<ApiKeyCreated>("/api-keys", json("POST", { name, role, expires_in_days: expiresInDays })),
+  revokeApiKey: (id: string) => request<void>(`/api-keys/${id}`, { method: "DELETE" }),
+  listAudit: (before?: number) => request<AuditEntry[]>(`/audit?limit=100${before ? `&before=${before}` : ""}`),
   listModels: (provider: string) =>
     request<ModelInfo[]>(`/providers/${encodeURIComponent(provider)}/models`),
 };

@@ -1,10 +1,10 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from app.api.deps import ProviderRegistryDep
+from app.api.deps import ProviderRegistryDep, get_principal
 from app.schemas.providers import ModelRead, ProviderRead
 from app.services import provider_service
 
-router = APIRouter(prefix="/providers", tags=["providers"])
+router = APIRouter(dependencies=[Depends(get_principal)], prefix="/providers", tags=["providers"])
 
 
 @router.get("")

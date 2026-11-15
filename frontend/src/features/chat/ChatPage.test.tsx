@@ -151,7 +151,7 @@ describe("ChatPage", () => {
     // The live run is followed (not re-sent) and ends in the persisted transcript.
     expect((await screen.findAllByText("406.5", { exact: false })).length).toBeGreaterThan(0);
     await waitFor(() => expect(calls.some((c) => c.path === "/runs/r-1/stream?after=0")).toBe(true));
-    expect(calls.filter((c) => c.method === "POST")).toEqual([]);
+    expect(calls.filter((c) => c.method === "POST" && !c.path.startsWith("/auth/"))).toEqual([]);
     expect(calls.filter((c) => c.path.startsWith("/runs/r-1/stream"))).toHaveLength(1);
   });
 });

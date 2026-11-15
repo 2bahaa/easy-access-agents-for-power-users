@@ -9,7 +9,18 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.api.errors import register_error_handlers
-from app.api.routers import agents, conversations, health, providers, runs, skills, tools
+from app.api.ratelimit import SlidingWindowLimiter
+from app.api.routers import (
+    agents,
+    auth,
+    conversations,
+    health,
+    org,
+    providers,
+    runs,
+    skills,
+    tools,
+)
 from app.config import Settings, get_settings
 from app.db.session import create_engine, create_sessionmaker
 from app.runtime.providers.registry import ProviderRegistry, build_default_providers
@@ -61,14 +72,17 @@ def create_app(
         settings.ollama_base_url
     )
     app.state.run_worker = None
+    app.state.login_limiter = SlidingWindowLimiter(settings.login_attempts_per_5min, 300)
+    app.state.register_limiter = SlidingWindowLimiter(settings.registrations_per_hour, 3600)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
+        allow_credentials=True,  # refresh cookie
         allow_methods=["*"],
         allow_headers=["*"],
     )
     register_error_handlers(app)
-    for module in (health, agents, skills, tools, providers, conversations, runs):
+    for module in (health, auth, org, agents, skills, tools, providers, conversations, runs):
         app.include_router(module.router, prefix="/api")
     return app
 

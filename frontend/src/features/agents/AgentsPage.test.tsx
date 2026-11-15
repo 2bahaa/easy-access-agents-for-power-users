@@ -2,7 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { agent, models, skills, tools } from "../../test/fixtures";
-import { mockApi, renderApp } from "../../test/render";
+import { mockApi, mockApiDown, renderApp } from "../../test/render";
 
 const HEALTH = { status: "ok", database: "ok", ollama: "ok" };
 
@@ -36,7 +36,7 @@ describe("Agents pages (integration with mocked API)", () => {
   });
 
   it("shows a helpful error when the backend is down", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("Failed to fetch"))));
+    mockApiDown();
     renderApp("/agents");
     expect(await screen.findByText(/Cannot reach the backend/)).toBeInTheDocument();
     expect(await screen.findByLabelText("API: Offline")).toBeInTheDocument();
@@ -58,7 +58,7 @@ describe("Agents pages (integration with mocked API)", () => {
     await userEvent.click(screen.getByRole("button", { name: "Create agent" }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe("/agents/a-new"));
-    const post = calls.find((c) => c.method === "POST");
+    const post = calls.find((c) => c.method === "POST" && c.path === "/agents");
     expect(post?.body).toMatchObject({ name: "Helper", model: "qwen3:4b", provider: "ollama" });
     expect(await screen.findByText("Agent created")).toBeInTheDocument();
   });

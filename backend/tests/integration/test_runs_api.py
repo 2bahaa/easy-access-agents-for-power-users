@@ -9,7 +9,7 @@ from httpx import ASGITransport, AsyncClient, Response
 from langchain_core.messages import ToolMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Agent, Conversation, Run
+from app.db.models import Agent, Conversation, Run, Workspace
 from app.main import create_app
 from app.services.run_service import list_run_events, mark_interrupted_runs
 from tests.fakes import FakeProvider, reply, tool_call
@@ -220,7 +220,11 @@ async def test_history_survives_app_restart(
     # A brand-new app instance (fresh engine, registries and worker) sees the same data.
     fresh = create_app(app.state.settings, provider_registry=app.state.provider_registry)
     async with fresh.router.lifespan_context(fresh):
-        async with AsyncClient(transport=ASGITransport(app=fresh), base_url="http://test") as c2:
+        async with AsyncClient(
+            transport=ASGITransport(app=fresh),
+            base_url="http://test",
+            headers={"Authorization": client.headers["Authorization"]},  # same JWT secret
+        ) as c2:
             detail = (await c2.get(f"/api/conversations/{conv['id']}")).json()
             assert [m["content"] for m in detail["messages"]] == [
                 "Remember this",
@@ -236,15 +240,16 @@ async def test_runs_unknown_404(client: AsyncClient) -> None:
     assert (await client.get(f"/api/runs/{missing}/events")).status_code == 404
 
 
-async def test_mark_interrupted_runs(session: AsyncSession) -> None:
+async def test_mark_interrupted_runs(session: AsyncSession, workspace: Workspace) -> None:
     """Startup reaping (no worker running): active runs become failed with a terminal event."""
-    agent = Agent(name="A", provider="fake", model="tools:1b")
+    ws = workspace.id
+    agent = Agent(workspace_id=ws, name="A", provider="fake", model="tools:1b")
     session.add(agent)
     await session.flush()
-    conv = Conversation(agent_id=agent.id)
+    conv = Conversation(workspace_id=ws, agent_id=agent.id)
     session.add(conv)
     await session.flush()
-    run = Run(conversation_id=conv.id, agent_id=agent.id, status="running")
+    run = Run(workspace_id=ws, conversation_id=conv.id, agent_id=agent.id, status="running")
     session.add(run)
     await session.commit()
 
@@ -252,5 +257,5 @@ async def test_mark_interrupted_runs(session: AsyncSession) -> None:
     await session.refresh(run)
     assert run.status == "failed"
     assert run.error == "Interrupted by a server restart"
-    (event,) = await list_run_events(session, run.id)
+    (event,) = await list_run_events(session, run.id, ws)
     assert event.type == "run.failed" and event.payload["code"] == "internal_error"

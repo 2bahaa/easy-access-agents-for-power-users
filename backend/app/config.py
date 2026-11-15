@@ -3,7 +3,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -36,6 +36,21 @@ class Settings(BaseSettings):
     run_stale_after_s: float = Field(default=30.0, gt=0)
     # Fallback poll interval for queued runs (NOTIFY wakes the worker immediately).
     run_poll_interval_s: float = Field(default=2.0, gt=0)
+
+    # Authentication. JWT_SECRET must be set (and shared by every API process) in any real
+    # deployment; when empty a random per-process secret is used (tokens die on restart).
+    jwt_secret: SecretStr = SecretStr("")
+    access_token_ttl_s: int = Field(default=900, ge=60)
+    refresh_token_ttl_days: int = Field(default=14, ge=1)
+    # Anyone may register (creating their own organization). The first user always may:
+    # they become the owner of the Default organization that holds pre-existing data.
+    allow_registration: bool = True
+    # Send the refresh cookie only over HTTPS (enable behind TLS).
+    cookie_secure: bool = False
+    # Brute-force protection (per API process): login attempts per (client, email) per
+    # 5 minutes, registrations per client per hour.
+    login_attempts_per_5min: int = Field(default=10, ge=1)
+    registrations_per_hour: int = Field(default=20, ge=1)
 
     # Comma-separated list of allowed browser origins.
     cors_origins: str = "http://localhost:5173"

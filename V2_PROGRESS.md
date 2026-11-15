@@ -6,8 +6,8 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 |---|---|---|---|
 | 0 | Scope, docs, CI | done | 620c3ab |
 | 1 | Design system & app shell | done | 593469d |
-| 2a | Durable runtime (queue, worker, resume) | done | (this commit) |
-| 2b | Auth, users, workspaces, tenancy, audit | pending | – |
+| 2a | Durable runtime (queue, worker, resume) | done | 720b452 |
+| 2b | Auth, users, workspaces, tenancy, audit | done | (this commit) |
 | 3 | Multi-provider | pending | – |
 | 4 | Agent platform (versions, templates) & skills v2 | pending | – |
 | 5 | Tools & MCP | pending | – |
@@ -51,6 +51,15 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 - Tests: backend 173 passed / 2 skipped (+11: durability suite incl. two-worker exclusivity, reaping, resume, large events, API-without-worker); frontend 107 passed (+1 reattach). ruff, format, mypy, typecheck, lint, build clean.
 - Manual E2E (Docker, llama3.2:1b): client disconnect → run keeps `running` → `docker compose restart backend` → new API instance follows the run live → `completed`, answer persisted.
 
+### Phase 2b — Authentication, RBAC, tenancy, audit
+- Users, organizations, workspaces, memberships (viewer < editor < admin < owner), API keys, rotating refresh tokens with reuse detection, append-only audit log (migration `0003`; MVP data moved into the Default workspace, first registrant owns it).
+- argon2id passwords (uniform-timing login), HS256 access JWTs (15 min), httpOnly SameSite=Strict refresh cookie scoped to `/api/auth`, `eaa_` API keys (hash-only storage, role ≤ creator, bound to a workspace, cannot mint keys).
+- Every protected endpoint resolves a `Principal`; every service filters by `workspace_id` (404 cross-tenant) and enforces roles; per-workspace file sandboxes (`WORKSPACE_DIR/<slug>/`); login/registration rate limiting.
+- Frontend: in-memory access token + silent refresh + single-flight 401 retry, login/register pages (safe `next` redirects), user/workspace switcher, Organization page (members, API keys shown once, workspaces, audit log; admin sections hidden by role — enforced server-side).
+- New deps (justified): `argon2-cffi` (password hashing, OWASP-recommended), `pyjwt` (JWT encode/verify).
+- Tests: backend 191 passed / 2 skipped (+18 auth/tenancy/RBAC/API-key/audit tests incl. cross-tenant negatives for every resource and file sandbox isolation); frontend 22 files / 120 passed (+13). ruff, format, mypy, typecheck, lint, build clean.
+- Docker: migration 0003 applied to the existing dev DB with data preserved (1 agent, 4 conversations in Default); unauthenticated `/api/agents` → 401; `/api/health` public.
+
 ## Known issues
 - Frontend bundle is 574 kB (minified); route-level code splitting planned with the workflow editor (Phase 8).
 - Python text-mode writes on Windows produce CRLF; scripts now write bytes/LF (`.gitattributes` normalizes in git; `*.sh` must be LF for containers).
@@ -58,3 +67,6 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 
 ## Blockers
 - None.
+
+## Action for the user
+- Register your account first on the Docker instance (http://localhost:3000): the first registrant becomes owner of the Default organization holding the pre-V2 data. Set `JWT_SECRET` in `.env`.

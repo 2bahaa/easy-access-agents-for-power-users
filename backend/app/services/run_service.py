@@ -4,6 +4,7 @@ import logging
 import uuid
 from collections.abc import Callable, Sequence
 from contextlib import AbstractAsyncContextManager
+from pathlib import Path
 from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
@@ -12,7 +13,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.db.models import ACTIVE_RUN_STATUSES, Agent, Conversation, Message, Run, RunEvent
+from app.db.models import (
+    ACTIVE_RUN_STATUSES,
+    Agent,
+    Conversation,
+    Message,
+    Run,
+    RunEvent,
+    Workspace,
+)
 from app.runtime.executor import AgentRun
 from app.runtime.providers.registry import ProviderRegistry, UnknownProviderError
 from app.runtime.types import (
@@ -23,8 +32,9 @@ from app.runtime.types import (
     SkillContent,
     ToolGrant,
 )
-from app.services import agent_service, conversation_service, run_queue
+from app.services import agent_service, audit_service, conversation_service, run_queue
 from app.services.errors import ConflictError, DomainValidationError, NotFoundError
+from app.services.principal import Principal
 from app.tools.base import ToolContext
 from app.tools.registry import ToolRegistry
 
@@ -161,18 +171,21 @@ async def active_run_id(session: AsyncSession, conversation_id: uuid.UUID) -> uu
 
 async def start_run(
     session: AsyncSession,
+    principal: Principal,
     conversation_id: uuid.UUID,
     content: str,
     *,
     providers: ProviderRegistry,
 ) -> Run:
     """Validate, persist the user message + a queued run, and wake a worker.
-    Raises domain errors (404/409/422) before anything streams."""
-    conversation = await conversation_service.get_conversation(session, conversation_id)
+    Raises domain errors (403/404/409/422) before anything streams."""
+    principal.require("editor")
+    ws = principal.workspace_id
+    conversation = await conversation_service.get_conversation(session, conversation_id, ws)
     if await active_run_id(session, conversation_id) is not None:
         raise ConflictError("A run is already in progress for this conversation")
 
-    agent = await agent_service.get_agent(session, conversation.agent_id)
+    agent = await agent_service.get_agent(session, conversation.agent_id, ws)
     config = to_agent_config(agent)
     try:
         providers.get(config.provider)
@@ -186,6 +199,7 @@ async def start_run(
         content=content,
     )
     run = Run(
+        workspace_id=ws,
         conversation_id=conversation_id,
         agent_id=agent.id,
         status="queued",
@@ -217,6 +231,9 @@ async def prepare_agent_run(
     """Rebuild a claimed run's runtime inputs from the database (worker side)."""
     config = AgentConfig.model_validate(run.agent_snapshot)
     provider = providers.get(config.provider)
+    workspace = await session.get(Workspace, run.workspace_id)
+    if workspace is None:
+        raise NotFoundError(f"Workspace of run {run.id} not found")
     messages = await conversation_service.list_messages(session, run.conversation_id)
     user_message_id = next(
         (m.id for m in messages if m.run_id == run.id and m.role == "user"), None
@@ -236,21 +253,26 @@ async def prepare_agent_run(
             run_timeout_s=settings.run_timeout_cap_s,
             tool_timeout_s=settings.tool_timeout_s,
         ),
-        ToolContext(workspace_dir=settings.workspace_dir),
+        ToolContext(workspace_dir=workspace_files_dir(settings, workspace)),
     )
 
 
-async def get_run(session: AsyncSession, run_id: uuid.UUID) -> Run:
+def workspace_files_dir(settings: Settings, workspace: Workspace) -> Path:
+    """Each workspace's file sandbox is its own folder under WORKSPACE_DIR (tenant isolation)."""
+    return settings.workspace_dir / workspace.slug
+
+
+async def get_run(session: AsyncSession, run_id: uuid.UUID, workspace_id: uuid.UUID) -> Run:
     run = await session.get(Run, run_id, populate_existing=True)
-    if run is None:
+    if run is None or run.workspace_id != workspace_id:
         raise NotFoundError(f"Run {run_id} not found")
     return run
 
 
 async def list_run_events(
-    session: AsyncSession, run_id: uuid.UUID, after_seq: int = 0
+    session: AsyncSession, run_id: uuid.UUID, workspace_id: uuid.UUID, after_seq: int = 0
 ) -> Sequence[RunEvent]:
-    await get_run(session, run_id)
+    await get_run(session, run_id, workspace_id)
     stmt = (
         select(RunEvent)
         .where(RunEvent.run_id == run_id, RunEvent.seq > after_seq)
@@ -259,10 +281,15 @@ async def list_run_events(
     return (await session.scalars(stmt)).all()
 
 
-async def cancel_run(session: AsyncSession, run_id: uuid.UUID) -> None:
+async def cancel_run(session: AsyncSession, principal: Principal, run_id: uuid.UUID) -> None:
+    principal.require("editor")
+    run = await get_run(session, run_id, principal.workspace_id)
     if await run_queue.request_cancel(session, run_id):
+        audit_service.record(
+            session, "run.cancelled", principal=principal, target_type="run", target_id=run_id
+        )
+        await session.commit()
         return
-    run = await get_run(session, run_id)
     raise ConflictError(f"Run is not active (status: {run.status})")
 
 

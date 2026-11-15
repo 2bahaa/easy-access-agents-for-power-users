@@ -28,3 +28,17 @@ class DomainValidationError(DomainError):
 class ProviderUnavailableError(DomainError):
     status_code = 502
     title = "Provider unavailable"
+
+
+class UnauthorizedError(DomainError):
+    """Missing, invalid or expired credentials."""
+
+    status_code = 401
+    title = "Unauthorized"
+
+
+class ForbiddenError(DomainError):
+    """Authenticated, but the principal's role does not allow the operation."""
+
+    status_code = 403
+    title = "Forbidden"

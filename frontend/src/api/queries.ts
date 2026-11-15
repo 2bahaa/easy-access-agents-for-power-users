@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "./client";
-import type { AgentWrite, SkillWrite } from "./types";
+import type { AgentWrite, Role, SkillWrite } from "./types";
 
 export const keys = {
   health: ["health"] as const,
@@ -16,6 +16,10 @@ export const keys = {
   conversations: (agentId: string) => ["conversations", { agentId }] as const,
   conversation: (id: string) => ["conversation", id] as const,
   runEvents: (runId: string) => ["runs", runId, "events"] as const,
+  members: ["members"] as const,
+  apiKeys: ["api-keys"] as const,
+  audit: ["audit"] as const,
+  workspaces: ["workspaces"] as const,
 };
 
 export const useHealth = () =>
@@ -137,4 +141,59 @@ export function useDeleteConversation(agentId: string) {
       void qc.invalidateQueries({ queryKey: keys.conversations(agentId) });
     },
   });
+}
+
+// ---- organization ----
+
+export const useMembers = (enabled = true) =>
+  useQuery({ queryKey: keys.members, queryFn: api.listMembers, enabled });
+
+export const useApiKeys = () => useQuery({ queryKey: keys.apiKeys, queryFn: api.listApiKeys });
+
+export const useAudit = (enabled = true) =>
+  useQuery({ queryKey: keys.audit, queryFn: () => api.listAudit(), enabled });
+
+export function useAddMember() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ email, role }: { email: string; role: Role }) => api.addMember(email, role),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.members }),
+  });
+}
+
+export function useUpdateMember() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: Role }) => api.updateMember(userId, role),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.members }),
+  });
+}
+
+export function useRemoveMember() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => api.removeMember(userId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.members }),
+  });
+}
+
+export function useCreateApiKey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { name: string; role: Exclude<Role, "owner">; expiresInDays: number | null }) =>
+      api.createApiKey(v.name, v.role, v.expiresInDays),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.apiKeys }),
+  });
+}
+
+export function useRevokeApiKey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.revokeApiKey(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.apiKeys }),
+  });
+}
+
+export function useCreateWorkspace() {
+  return useMutation({ mutationFn: (name: string) => api.createWorkspace(name) });
 }

@@ -19,7 +19,7 @@ describe("api client", () => {
     const [url, init] = vi.mocked(fetch).mock.calls[0]!;
     expect(url).toBe("/api/skills");
     expect(init?.method).toBe("POST");
-    expect((init?.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
+    expect(new Headers(init?.headers).get("Content-Type")).toBe("application/json");
     expect(JSON.parse(String(init?.body))).toMatchObject({ slug: "a" });
   });
 

@@ -45,7 +45,7 @@ cp .env.example .env              # then change POSTGRES_PASSWORD (and DATABASE_
 docker compose up -d --build      # database + API + Studio
 ```
 
-Open **http://localhost:3000**. Migrations run automatically when the backend starts.
+Open **http://localhost:3000** and create an account. Migrations run automatically when the backend starts. **The first account registered on a server becomes the owner of the Default organization**, which holds any data created before V2 — register yourself first. Set `JWT_SECRET` in `.env` (see `.env.example`); set `ALLOW_REGISTRATION=false` to stop further sign-ups (you can still add existing users as members).
 
 | URL | What |
 |---|---|

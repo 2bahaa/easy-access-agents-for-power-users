@@ -44,7 +44,11 @@ Verified versions (Phase 0): Python 3.12, LangGraph 1.2.22, langchain-core 1.8, 
 | Module | Responsibility |
 |---|---|
 | `main.py` | App factory, lifespan (DB engine, registries, skill seeding), CORS, router mounting |
-| `config.py` | `Settings` from environment: DB URL, Ollama URL, `WORKSPACE_DIR`, global caps |
+| `config.py` | `Settings` from environment: DB URL, Ollama URL, `WORKSPACE_DIR`, global caps, run worker, auth (`JWT_SECRET`, token TTLs, registration, cookie, rate limits) |
+| `security.py` | Pure credential primitives: argon2id password hashing (+ dummy hash for uniform login timing), HS256 access JWTs, opaque refresh tokens, API key generation/parsing/hash comparison |
+| `services/auth_service.py`, `principal.py` | Register/login/refresh rotation/logout; `resolve_principal` (JWT or API key → `Principal(user, org, workspace, role)`); every service call receives the principal and filters by `workspace_id` |
+| `services/tenancy_service.py`, `audit_service.py` | Workspaces, members (role rules: no granting above own role, keep ≥1 owner), API keys; audit trail |
+| `api/deps.py` → `PrincipalDep` | Resolves the principal from `Authorization` + `X-Workspace-Id` for every protected router; `api/ratelimit.py` throttles login/registration (per process) |
 | `api/routers/` | HTTP endpoints only: parse/validate, call a service, map results/errors |
 | `api/sse.py` | Serialize `AgentEvent`s to SSE frames, keep-alives; `follow_run_sse` streams a run from the database (disconnect only stops following) |
 | `api/errors.py` | Domain exceptions → problem-JSON responses |
@@ -104,6 +108,8 @@ easy-access-agents/
 ```
 
 ## 5. Database schema
+
+**Tenancy (V2, migration `0003`):** `organizations` → `workspaces` (globally unique immutable `slug`, also the workspace's file-sandbox folder `WORKSPACE_DIR/<slug>/`); `users` (lower-cased unique email, argon2id `password_hash`); `memberships(org_id, user_id, role)`; `api_keys` (SHA-256 hash + lookup prefix, role ≤ creator's, optional expiry, revocation); `refresh_tokens` (hash, `family_id` for reuse detection); `audit_log` (append-only, written in the same transaction as the action). `agents`, `skills`, `conversations` and `runs` carry `workspace_id` (FK, cascade); skill slugs are unique per workspace. Pre-existing data was moved into the Default organization/workspace (`slug = default`).
 
 | Table | Columns | Notes |
 |---|---|---|

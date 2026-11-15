@@ -6,7 +6,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Skill
+from app.db.models import Skill, Workspace
 from app.services.skill_service import seed_builtin_skills
 
 
@@ -72,18 +72,31 @@ async def test_unknown_skill_404(client: AsyncClient) -> None:
     assert (await client.delete(f"/api/skills/{missing}")).status_code == 404
 
 
-async def test_seed_builtin_skills_is_idempotent(session: AsyncSession, tmp_path: Path) -> None:
+async def test_seed_builtin_skills_is_idempotent(
+    session: AsyncSession, workspace: Workspace, tmp_path: Path
+) -> None:
     (tmp_path / "s.md").write_text(
         "---\nslug: seeded\nname: Seeded\ndescription: d\n---\nbody", encoding="utf-8"
     )
-    assert await seed_builtin_skills(session, tmp_path) == 1
+    assert await seed_builtin_skills(session, tmp_path) == 1  # every workspace
     assert await seed_builtin_skills(session, tmp_path) == 0
+    assert await seed_builtin_skills(session, tmp_path, workspace.id) == 0
     skill = await session.scalar(select(Skill).where(Skill.slug == "seeded"))
     assert skill is not None and skill.is_builtin and skill.content_md == "body"
 
 
-async def test_seed_does_not_overwrite_user_edits(session: AsyncSession, tmp_path: Path) -> None:
-    session.add(Skill(slug="seeded", name="Mine", description="", content_md="edited"))
+async def test_seed_does_not_overwrite_user_edits(
+    session: AsyncSession, workspace: Workspace, tmp_path: Path
+) -> None:
+    session.add(
+        Skill(
+            workspace_id=workspace.id,
+            slug="seeded",
+            name="Mine",
+            description="",
+            content_md="edited",
+        )
+    )
     await session.commit()
     (tmp_path / "s.md").write_text("---\nslug: seeded\nname: Seeded\n---\nbody", encoding="utf-8")
     assert await seed_builtin_skills(session, tmp_path) == 0

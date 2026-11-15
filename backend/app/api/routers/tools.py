@@ -1,9 +1,9 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from app.api.deps import SettingsDep, ToolRegistryDep
+from app.api.deps import SettingsDep, ToolRegistryDep, get_principal
 from app.schemas.tools import ToolInfo
 
-router = APIRouter(prefix="/tools", tags=["tools"])
+router = APIRouter(dependencies=[Depends(get_principal)], prefix="/tools", tags=["tools"])
 
 
 @router.get("")

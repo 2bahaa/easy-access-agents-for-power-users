@@ -1,4 +1,4 @@
-"""Agent management use cases."""
+"""Agent management use cases (always scoped to one workspace)."""
 
 import uuid
 from collections.abc import Sequence
@@ -14,7 +14,9 @@ from app.runtime.providers.base import ProviderError
 from app.runtime.providers.registry import ProviderRegistry, UnknownProviderError
 from app.schemas.agents import AgentRead, AgentWrite, ModelParams, ToolSelection
 from app.schemas.skills import SkillRef
+from app.services import audit_service
 from app.services.errors import ConflictError, DomainValidationError, NotFoundError
+from app.services.principal import Principal
 from app.tools.registry import ToolConfigError, ToolRegistry, UnknownToolError
 
 
@@ -36,18 +38,20 @@ def to_read(agent: Agent) -> AgentRead:
     )
 
 
-async def list_agents(session: AsyncSession) -> Sequence[Agent]:
+async def list_agents(session: AsyncSession, workspace_id: uuid.UUID) -> Sequence[Agent]:
     stmt = (
         select(Agent)
+        .where(Agent.workspace_id == workspace_id)
         .options(raiseload(Agent.skill_links), raiseload(Agent.tool_links))
         .order_by(Agent.updated_at.desc())
     )
     return (await session.scalars(stmt)).all()
 
 
-async def get_agent(session: AsyncSession, agent_id: uuid.UUID) -> Agent:
+async def get_agent(session: AsyncSession, agent_id: uuid.UUID, workspace_id: uuid.UUID) -> Agent:
+    """404 for unknown ids *and* for agents of other workspaces (no existence leak)."""
     agent = await session.get(Agent, agent_id, populate_existing=True)
-    if agent is None:
+    if agent is None or agent.workspace_id != workspace_id:
         raise NotFoundError(f"Agent {agent_id} not found")
     return agent
 
@@ -63,10 +67,13 @@ def _check_limits(data: AgentWrite, settings: Settings) -> None:
         )
 
 
-async def _resolve_skills(session: AsyncSession, ids: list[uuid.UUID]) -> dict[uuid.UUID, Skill]:
+async def _resolve_skills(
+    session: AsyncSession, ids: list[uuid.UUID], workspace_id: uuid.UUID
+) -> dict[uuid.UUID, Skill]:
     if not ids:
         return {}
-    skills = {s.id: s for s in await session.scalars(select(Skill).where(Skill.id.in_(ids)))}
+    stmt = select(Skill).where(Skill.id.in_(ids), Skill.workspace_id == workspace_id)
+    skills = {s.id: s for s in await session.scalars(stmt)}
     missing = [str(i) for i in ids if i not in skills]
     if missing:
         raise DomainValidationError(f"Unknown skill id(s): {', '.join(missing)}")
@@ -142,42 +149,55 @@ def _apply(
 
 async def create_agent(
     session: AsyncSession,
+    principal: Principal,
     data: AgentWrite,
     settings: Settings,
     registry: ToolRegistry,
     providers: ProviderRegistry,
 ) -> Agent:
+    principal.require("editor")
     _check_limits(data, settings)
     tool_configs = _validate_tools(data, registry)
     await _check_provider_and_model(data, providers)
-    skills = await _resolve_skills(session, data.skill_ids)
-    agent = Agent(skill_links=[], tool_links=[])
+    skills = await _resolve_skills(session, data.skill_ids, principal.workspace_id)
+    agent = Agent(workspace_id=principal.workspace_id, skill_links=[], tool_links=[])
     _apply(agent, data, skills, tool_configs)
     session.add(agent)
     await session.commit()
-    return await get_agent(session, agent.id)
+    return await get_agent(session, agent.id, principal.workspace_id)
 
 
 async def update_agent(
     session: AsyncSession,
+    principal: Principal,
     agent_id: uuid.UUID,
     data: AgentWrite,
     settings: Settings,
     registry: ToolRegistry,
     providers: ProviderRegistry,
 ) -> Agent:
-    agent = await get_agent(session, agent_id)
+    principal.require("editor")
+    agent = await get_agent(session, agent_id, principal.workspace_id)
     _check_limits(data, settings)
     tool_configs = _validate_tools(data, registry)
     await _check_provider_and_model(data, providers)
-    skills = await _resolve_skills(session, data.skill_ids)
+    skills = await _resolve_skills(session, data.skill_ids, principal.workspace_id)
     _apply(agent, data, skills, tool_configs)
     agent.updated_at = func.now()
     await session.commit()
-    return await get_agent(session, agent_id)
+    return await get_agent(session, agent_id, principal.workspace_id)
 
 
-async def delete_agent(session: AsyncSession, agent_id: uuid.UUID) -> None:
-    agent = await get_agent(session, agent_id)
+async def delete_agent(session: AsyncSession, principal: Principal, agent_id: uuid.UUID) -> None:
+    principal.require("editor")
+    agent = await get_agent(session, agent_id, principal.workspace_id)
     await session.delete(agent)  # children go via ON DELETE CASCADE
+    audit_service.record(
+        session,
+        "agent.deleted",
+        principal=principal,
+        target_type="agent",
+        target_id=agent_id,
+        name=agent.name,
+    )
     await session.commit()

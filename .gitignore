@@ -17,10 +17,12 @@ dist/
 .env.*
 !.env.example
 
-# File-reader sandbox: keep folder and sample, ignore user files
+# File-reader sandboxes (one folder per workspace slug): keep the sample, ignore user files
 workspace/*
 !workspace/.gitkeep
-!workspace/notes.txt
+!workspace/default/
+workspace/default/*
+!workspace/default/notes.txt
 
 # OS / editors
 .DS_Store

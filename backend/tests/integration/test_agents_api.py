@@ -118,7 +118,8 @@ async def test_deleting_skill_detaches_it(client: AsyncClient) -> None:
 
 async def test_deleting_agent_cascades(client: AsyncClient, session: AsyncSession) -> None:
     agent = (await client.post("/api/agents", json=agent_payload())).json()
-    session.add(Conversation(agent_id=uuid.UUID(agent["id"])))
+    ws = (await client.get("/api/auth/me")).json()["current_workspace_id"]
+    session.add(Conversation(workspace_id=uuid.UUID(ws), agent_id=uuid.UUID(agent["id"])))
     await session.commit()
     assert (await client.delete(f"/api/agents/{agent['id']}")).status_code == 204
     assert await session.scalar(select(func.count()).select_from(Conversation)) == 0

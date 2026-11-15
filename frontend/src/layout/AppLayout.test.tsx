@@ -38,7 +38,7 @@ describe("App shell", () => {
     api();
     const user = userEvent.setup();
     renderApp("/agents");
-    await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+    await user.click(await screen.findByRole("button", { name: "Collapse sidebar" }));
     expect(localStorage.getItem("eaa.sidebar.collapsed")).toBe("1");
     // Rail links keep an accessible name even though the text is hidden.
     expect(screen.getByRole("link", { name: "Agents" })).toHaveAttribute("aria-label", "Agents");
@@ -50,6 +50,7 @@ describe("App shell", () => {
     api();
     const user = userEvent.setup();
     const { router } = renderApp("/agents");
+    await screen.findByRole("navigation", { name: "Main" }); // shell rendered (session ready)
     await user.keyboard("{Control>}k{/Control}");
     const dialog = await screen.findByRole("dialog");
     await user.type(within(dialog).getByRole("combobox"), "Research");
@@ -62,7 +63,7 @@ describe("App shell", () => {
     api();
     const user = userEvent.setup();
     const { router } = renderApp("/agents");
-    await user.click(screen.getAllByRole("button", { name: /Search/ })[0]!);
+    await user.click((await screen.findAllByRole("button", { name: /Search/ }))[0]!);
     const dialog = await screen.findByRole("dialog");
     await user.click(await within(dialog).findByRole("option", { name: /Quarterly notes/ }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/agents/a-1/chat/c-1"));
@@ -72,7 +73,7 @@ describe("App shell", () => {
     api();
     const user = userEvent.setup();
     renderApp("/agents");
-    await user.click(screen.getByRole("button", { name: "Theme: system" }));
+    await user.click(await screen.findByRole("button", { name: "Theme: system" }));
     await user.click(await screen.findByRole("menuitem", { name: "Dark" }));
     expect(document.documentElement).toHaveClass("dark");
     expect(localStorage.getItem("eaa.theme")).toBe("dark");

@@ -24,6 +24,7 @@ Infra: `docker compose up -d db` (PostgreSQL only, for local dev) · `docker com
 - Orchestration uses a custom LangGraph `StateGraph` with our own tool node. Do not use `create_react_agent` or the prebuilt `ToolNode`.
 - LLMs are created only through the provider registry (`app/runtime/providers/`).
 - Tools are defined in code (`app/tools/`) and registered in the tool registry; per-agent permission and config live in the DB.
+- Multi-tenant: every protected endpoint depends on `PrincipalDep`; every service function that reads or writes tenant data takes the principal (or `workspace_id`) and filters by it. Cross-workspace access returns 404. Enforce roles in services (`principal.require(...)`), never only in the UI. Security-relevant actions write an audit entry in the same transaction.
 - Our Postgres tables are the single source of conversation history. No LangGraph checkpointer in the MVP.
 - Schema changes go through Alembic migrations only — never `create_all` outside tests.
 - Runs are durable: they live in Postgres (`runs` queue) and execute in a run worker (embedded in the API by default, or `python -m app.worker`). API and workers share no memory — coordinate only through the DB (`SKIP LOCKED` claims, `LISTEN/NOTIFY`, cancel flag). Never keep run state in API process memory.

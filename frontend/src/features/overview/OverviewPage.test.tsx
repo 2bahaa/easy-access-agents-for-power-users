@@ -1,7 +1,7 @@
 import { screen } from "@testing-library/react";
 
 import { models, skills, tools } from "../../test/fixtures";
-import { mockApi, renderApp } from "../../test/render";
+import { mockApi, mockApiDown, renderApp } from "../../test/render";
 
 const now = new Date().toISOString();
 
@@ -27,7 +27,7 @@ describe("Overview page", () => {
   });
 
   it("marks metrics unavailable instead of inventing numbers when the API is down", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("Failed to fetch"))));
+    mockApiDown();
     renderApp("/overview");
     expect(await screen.findByLabelText("Agents: unavailable")).toBeInTheDocument();
     expect(await screen.findByText(/Conversations are unavailable/)).toBeInTheDocument();

@@ -8,7 +8,8 @@ use LISTEN/NOTIFY, which only see committed data); every DB test starts from emp
 
 import asyncio
 import os
-from collections.abc import AsyncIterator, Iterator
+import uuid
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 
 import pytest
 from alembic.config import Config
@@ -20,9 +21,10 @@ from sqlalchemy.pool import NullPool
 
 from alembic import command
 from app.config import BACKEND_DIR, Settings, get_settings
-from app.db.models import Base
+from app.db.models import Base, Organization, Workspace
 from app.main import create_app
 from app.runtime.providers.registry import ProviderRegistry
+from app.services.principal import Principal
 from tests.fakes import FakeProvider
 
 
@@ -69,6 +71,7 @@ def settings(database_url: str, tmp_path_factory: pytest.TempPathFactory) -> Set
         run_heartbeat_s=0.2,
         run_poll_interval_s=0.2,
         run_stale_after_s=2.0,
+        jwt_secret="test-secret-not-for-production-0123456789",
     )
 
 
@@ -94,6 +97,34 @@ async def session(engine: AsyncEngine, clean_db: None) -> AsyncIterator[AsyncSes
 
 
 @pytest.fixture
+async def workspace(session: AsyncSession) -> Workspace:
+    """An organization + workspace created directly in the DB (for service-level tests)."""
+    org = Organization(name="Test org")
+    session.add(org)
+    await session.flush()
+    ws = Workspace(org_id=org.id, name="Test", slug=f"test-{uuid.uuid4().hex[:6]}")
+    session.add(ws)
+    await session.commit()
+    return ws
+
+
+async def principal_of(client: AsyncClient) -> Principal:
+    """The Principal behind an authenticated test client (for calling services directly)."""
+    me = (await client.get("/api/auth/me")).json()
+    org = next(
+        o
+        for o in me["organizations"]
+        if any(w["id"] == me["current_workspace_id"] for w in o["workspaces"])
+    )
+    return Principal(
+        user_id=uuid.UUID(me["user"]["id"]),
+        org_id=uuid.UUID(org["id"]),
+        workspace_id=uuid.UUID(me["current_workspace_id"]),
+        role=me["role"],
+    )
+
+
+@pytest.fixture
 def fake_provider() -> FakeProvider:
     return FakeProvider(no_tool_models={"plain:1b"})
 
@@ -110,7 +141,45 @@ async def app(
         yield application
 
 
+async def register_user(
+    client: AsyncClient, email: str, password: str = "correct horse battery", name: str = ""
+) -> str:
+    """Register via the API and return an access token."""
+    resp = await client.post(
+        "/api/auth/register", json={"email": email, "password": password, "name": name or email}
+    )
+    assert resp.status_code == 201, resp.text
+    token: str = resp.json()["access_token"]
+    return token
+
+
+UserClientFactory = Callable[[str], Awaitable[AsyncClient]]
+
+
 @pytest.fixture
-async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
+async def make_client(app: FastAPI) -> AsyncIterator[UserClientFactory]:
+    """Factory: a new registered user (own organization/workspace) with an authenticated client."""
+    clients: list[AsyncClient] = []
+
+    async def _make(email: str) -> AsyncClient:
+        c = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+        clients.append(c)
+        token = await register_user(c, email)
+        c.headers["Authorization"] = f"Bearer {token}"
+        return c
+
+    yield _make
+    for c in clients:
+        await c.aclose()
+
+
+@pytest.fixture
+async def client(make_client: UserClientFactory) -> AsyncClient:
+    """Authenticated client of the first registered user (owner of its organization)."""
+    return await make_client("owner@example.com")
+
+
+@pytest.fixture
+async def anon_client(app: FastAPI) -> AsyncIterator[AsyncClient]:
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c

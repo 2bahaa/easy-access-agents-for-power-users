@@ -24,9 +24,12 @@ from app.services import run_queue, run_service
 from app.services.run_stream import follow_run
 from app.tools.registry import build_default_registry
 from app.worker.run_worker import RunWorker
+from tests.conftest import principal_of, register_user
 from tests.fakes import FakeProvider, reply
 from tests.integration.test_runs_api import active_run, wait_for_status
 from tests.sse_helpers import create_agent, create_conversation, parse_sse
+
+PASSWORD = "correct horse battery"
 
 
 def types(events: list[dict[str, Any]]) -> list[str]:
@@ -42,6 +45,16 @@ async def api_without_worker(settings: Settings, provider: FakeProvider):  # typ
     )
     async with api.router.lifespan_context(api):
         async with AsyncClient(transport=ASGITransport(app=api), base_url="http://test") as c:
+            # Sign in (first call registers; a "restarted" API reuses the same account).
+            resp = await c.post(
+                "/api/auth/login", json={"email": "api@example.com", "password": PASSWORD}
+            )
+            token = (
+                resp.json()["access_token"]
+                if resp.status_code == 200
+                else await register_user(c, "api@example.com", PASSWORD)
+            )
+            c.headers["Authorization"] = f"Bearer {token}"
             yield api, c
 
 
@@ -72,7 +85,11 @@ async def test_disconnect_does_not_cancel_and_stream_replays(
 
     async with app.state.sessionmaker() as session:
         run = await run_service.start_run(
-            session, uuid.UUID(conv["id"]), "go", providers=app.state.provider_registry
+            session,
+            await principal_of(client),
+            uuid.UUID(conv["id"]),
+            "go",
+            providers=app.state.provider_registry,
         )
     # A follower reads the first event and goes away (client disconnect).
     follower = follow_run(app.state.sessionmaker, app.state.settings.listen_dsn, run.id)
@@ -158,7 +175,11 @@ async def test_cancel_queued_run_without_worker(
         conv = await create_conversation(c, agent["id"])
         async with api.state.sessionmaker() as session:
             run = await run_service.start_run(
-                session, uuid.UUID(conv["id"]), "x", providers=api.state.provider_registry
+                session,
+                await principal_of(c),
+                uuid.UUID(conv["id"]),
+                "x",
+                providers=api.state.provider_registry,
             )
         assert (await c.post(f"/api/runs/{run.id}/cancel")).status_code == 202
         detail = (await c.get(f"/api/runs/{run.id}")).json()
@@ -179,6 +200,7 @@ async def test_dead_worker_runs_are_reaped_and_followers_see_the_end(
     # Simulate a run claimed by a worker that then died (no heartbeats).
     async with sm() as session:
         run = Run(
+            workspace_id=(await principal_of(client)).workspace_id,
             conversation_id=uuid.UUID(conv["id"]),
             agent_id=uuid.UUID(agent["id"]),
             status="running",
@@ -222,7 +244,11 @@ async def test_two_workers_never_execute_a_run_twice(settings: Settings, clean_d
         async with api.state.sessionmaker() as session:
             for conv in convs:
                 run = await run_service.start_run(
-                    session, uuid.UUID(conv["id"]), "q", providers=api.state.provider_registry
+                    session,
+                    await principal_of(c),
+                    uuid.UUID(conv["id"]),
+                    "q",
+                    providers=api.state.provider_registry,
                 )
                 run_ids.append(run.id)
         async with (
@@ -255,7 +281,11 @@ async def test_database_allows_one_active_run_per_conversation(
     async with api_without_worker(settings, fake_provider) as (api, c):
         agent = await create_agent(c, tools=[])
         conv = await create_conversation(c, agent["id"])
-        ids = {"conversation_id": uuid.UUID(conv["id"]), "agent_id": uuid.UUID(agent["id"])}
+        ids = {
+            "workspace_id": (await principal_of(c)).workspace_id,
+            "conversation_id": uuid.UUID(conv["id"]),
+            "agent_id": uuid.UUID(agent["id"]),
+        }
         sm: async_sessionmaker[AsyncSession] = api.state.sessionmaker
         async with sm() as session:
             session.add(Run(**ids, status="running", worker_id="x"))

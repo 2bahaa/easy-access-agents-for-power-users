@@ -3,21 +3,26 @@ import {
   Check,
   ChevronsLeft,
   ChevronsRight,
+  ChevronsUpDown,
+  LogOut,
   Menu,
   Monitor,
   Moon,
   Search,
+  Settings,
   Sparkles,
   Sun,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 
 import { useHealth } from "../api/queries";
 import { Tooltip } from "../components/ui/Tooltip";
 import { cn } from "../lib/cn";
 import { useTheme, type ThemePreference } from "../lib/theme";
+import { useAuth } from "../features/auth/auth-context";
+import { initials } from "../lib/format";
 import { CommandMenu } from "./CommandMenu";
 import { NAV_GROUPS } from "./nav";
 
@@ -177,13 +182,14 @@ export function AppLayout() {
         <HealthPanel compact={rail} />
 
         <div className={cn("flex items-center gap-1 border-t border-line p-2", rail && "lg:flex-col")}>
+          <UserMenu compact={rail} />
           <ThemeMenu />
           <button
             type="button"
             onClick={toggleCollapsed}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             title={collapsed ? "Expand sidebar (Ctrl+B)" : "Collapse sidebar (Ctrl+B)"}
-            className="ml-auto hidden rounded-lg p-2 text-muted hover:bg-surface-2 hover:text-fg lg:block"
+            className="hidden rounded-lg p-2 text-muted hover:bg-surface-2 hover:text-fg lg:block"
           >
             {collapsed ? <ChevronsRight className="size-4" /> : <ChevronsLeft className="size-4" />}
           </button>
@@ -274,6 +280,81 @@ function ThemeMenu() {
               {preference === value && <Check className="size-3.5 text-brand-600" />}
             </DropdownMenu.Item>
           ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
+
+/** Account + workspace switcher. */
+function UserMenu({ compact }: { compact: boolean }) {
+  const { me, workspace, switchWorkspace, logout } = useAuth();
+  const navigate = useNavigate();
+  if (!me) return null;
+  const label = me.user.name || me.user.email;
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          aria-label={`Account: ${label}, workspace ${workspace?.name ?? ""}`}
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-2 rounded-lg p-1.5 text-left hover:bg-surface-2",
+            compact && "lg:flex-none",
+          )}
+        >
+          <span className="grid size-7 shrink-0 place-items-center rounded-full bg-brand-500/15 text-[11px] font-semibold text-brand-700 dark:text-brand-400">
+            {initials(label)}
+          </span>
+          <span className={cn("min-w-0 flex-1 leading-tight", compact && "lg:hidden")}>
+            <span className="block truncate text-xs font-medium">{label}</span>
+            <span className="block truncate text-[11px] text-subtle">{workspace?.name}</span>
+          </span>
+          <ChevronsUpDown className={cn("size-3.5 shrink-0 text-subtle", compact && "lg:hidden")} />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          side="top"
+          align="start"
+          sideOffset={6}
+          className="z-[60] max-h-[70vh] min-w-60 animate-fade-in overflow-y-auto rounded-xl border border-line bg-surface p-1 shadow-pop"
+        >
+          <div className="px-2.5 py-2">
+            <p className="truncate text-sm font-medium">{label}</p>
+            <p className="truncate text-xs text-muted">{me.user.email}</p>
+          </div>
+          <DropdownMenu.Separator className="my-1 h-px bg-line" />
+          {me.organizations.map((org) => (
+            <DropdownMenu.Group key={org.id}>
+              <DropdownMenu.Label className="px-2.5 pt-1.5 pb-1 text-[11px] font-semibold tracking-wider text-subtle uppercase">
+                {org.name} · {org.role}
+              </DropdownMenu.Label>
+              {org.workspaces.map((w) => (
+                <DropdownMenu.Item
+                  key={w.id}
+                  onSelect={() => w.id !== workspace?.id && void switchWorkspace(w.id)}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none data-[highlighted]:bg-surface-2"
+                >
+                  <span className="flex-1 truncate">{w.name}</span>
+                  {w.id === workspace?.id && <Check className="size-3.5 text-brand-600" />}
+                </DropdownMenu.Item>
+              ))}
+            </DropdownMenu.Group>
+          ))}
+          <DropdownMenu.Separator className="my-1 h-px bg-line" />
+          <DropdownMenu.Item
+            onSelect={() => void navigate("/settings")}
+            className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none data-[highlighted]:bg-surface-2"
+          >
+            <Settings className="size-4 text-subtle" /> Organization settings
+          </DropdownMenu.Item>
+          <DropdownMenu.Item
+            onSelect={() => void logout().then(() => navigate("/login"))}
+            className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none data-[highlighted]:bg-surface-2"
+          >
+            <LogOut className="size-4 text-subtle" /> Sign out
+          </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

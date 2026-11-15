@@ -40,6 +40,11 @@ services:
       CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-3000}
       # Runs execute in the separate "worker" service, so they survive API restarts.
       RUN_WORKER_EMBEDDED: "false"
+      # Set JWT_SECRET in .env (required when API_WORKERS > 1; otherwise a per-process
+      # secret is generated and access tokens are silently re-issued after a restart).
+      JWT_SECRET: ${JWT_SECRET:-}
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
     volumes:
       # Read-only: the file_reader tool can never modify host files.
       - ./workspace:/workspace:ro

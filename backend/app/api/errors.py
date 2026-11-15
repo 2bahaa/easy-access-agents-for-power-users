@@ -20,7 +20,10 @@ def problem(status: int, title: str, detail: str, **extra: Any) -> JSONResponse:
 
 async def _domain_error(_: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, DomainError)
-    return problem(exc.status_code, exc.title, exc.detail)
+    response = problem(exc.status_code, exc.title, exc.detail)
+    if exc.status_code == 401:
+        response.headers["WWW-Authenticate"] = "Bearer"
+    return response
 
 
 async def _validation_error(_: Request, exc: Exception) -> JSONResponse:

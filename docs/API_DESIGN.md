@@ -1,6 +1,8 @@
 # API Design
 
-Base path: `/api`. JSON over HTTP except the run stream (SSE). Request/response bodies are Pydantic models in `backend/app/schemas/`, mirrored by TypeScript types in `frontend/src/api/types.ts`. No authentication in the MVP.
+Base path: `/api`. JSON over HTTP except the run stream (SSE). Request/response bodies are Pydantic models in `backend/app/schemas/`, mirrored by TypeScript types in `frontend/src/api/types.ts`.
+
+**Authentication (V2):** every endpoint except `GET /health` and `/auth/register|login|refresh|logout` requires `Authorization: Bearer <token>`, where the token is either a short-lived access JWT (from login/register/refresh) or an API key (`eaa_<prefix>_<secret>`). Requests act on one **workspace**: `X-Workspace-Id` selects it for user tokens (default: the user's first workspace); API keys are bound to their workspace and ignore the header. Resources of other workspaces answer **404** (no existence leak); a workspace the caller is not a member of answers **403**. Roles per organization: `viewer` (read) < `editor` (create/update/delete agents, skills, conversations; send messages; cancel runs; own API keys) < `admin` (members, workspaces, all keys, audit log) < `owner`.
 
 ## 1. Conventions
 
@@ -12,7 +14,10 @@ Base path: `/api`. JSON over HTTP except the run stream (SSE). Request/response 
 | Status | Meaning |
 |---|---|
 | 400 | Malformed request |
-| 404 | Resource not found |
+| 401 | Missing/invalid/expired credentials (`WWW-Authenticate: Bearer`) |
+| 403 | Role too low, or a workspace the caller is not a member of |
+| 404 | Resource not found (also: belongs to another workspace) |
+| 429 | Too many login/registration attempts |
 | 409 | Conflict (duplicate skill slug; tools enabled on a model without tool support) |
 | 422 | Validation error (unknown tool, invalid tool config, limits above global caps) |
 | 502 | Provider (Ollama) unreachable |
@@ -24,6 +29,21 @@ Base path: `/api`. JSON over HTTP except the run stream (SSE). Request/response 
 - **Schema:** field-level validation (lengths, ranges, enums).
 
 ## 3. Endpoints
+
+### Auth & organization
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/auth/register` | `{email, password (≥10), name}` → 201 `{access_token, token_type, expires_at}` + httpOnly `eaa_refresh` cookie (SameSite=Strict, Path=/api/auth). The first user owns the Default organization (pre-existing data); later users get their own organization + "Personal" workspace. 403 if registration is disabled, 409 duplicate email |
+| POST | `/auth/login` | `{email, password}` → token + cookie; uniform 401 for unknown email/wrong password; rate limited (429) |
+| POST | `/auth/refresh` | Rotates the refresh cookie and returns a new access token. Reusing a rotated token revokes the whole session family (401) |
+| POST | `/auth/logout` | Revokes the refresh token family; 204 |
+| GET | `/auth/me` | `{user, organizations[{id, name, role, workspaces[]}], current_workspace_id, role}` |
+| GET/POST | `/workspaces` | List the organization's workspaces / create one (admin; seeds built-in skills) |
+| GET/POST | `/members` | List / add an existing user by email with a role (admin; cannot grant above own role) |
+| PATCH/DELETE | `/members/{user_id}` | Change role / remove (admin; never the last owner; never someone with a higher role) |
+| GET/POST | `/api-keys` | List (own; admins: all) / create `{name, role ≤ own, expires_in_days?}` → token shown once (editor; API keys cannot create keys) |
+| DELETE | `/api-keys/{id}` | Revoke (own key, or admin) |
+| GET | `/audit?limit=&before=` | Organization audit log, newest first (admin) |
 
 ### Health
 | Method | Path | Response |
