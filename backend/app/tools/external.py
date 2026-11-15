@@ -41,7 +41,12 @@ def http_tool_name(slug: str) -> str:
 
 
 def is_external(name: str) -> bool:
-    return name.startswith(("mcp__", "http__"))
+    """Runtime-defined tools (resolved per workspace/run, not in the code registry)."""
+    return name.startswith(("mcp__", "http__", "knowledge__", "memory__"))
+
+
+def is_data_tool(name: str) -> bool:
+    return name.startswith(("knowledge__", "memory__"))
 
 
 class _ExternalBase:

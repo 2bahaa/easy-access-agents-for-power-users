@@ -8,6 +8,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -293,6 +294,86 @@ class ApprovalPolicy(Base):
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")
     )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class KnowledgeCollection(TimestampMixin, Base):
+    """A searchable set of documents with one embedding model (changing it means re-indexing)."""
+
+    __tablename__ = "knowledge_collections"
+    __table_args__ = (UniqueConstraint("workspace_id", "name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(100))
+    description: Mapped[str] = mapped_column(Text, default="")
+    # Embedding provider: built-in name ("ollama") or a provider connection.
+    embedding_provider: Mapped[str] = mapped_column(String(50), default="ollama")
+    embedding_connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("provider_connections.id", ondelete="RESTRICT")
+    )
+    embedding_model: Mapped[str] = mapped_column(String(200))
+    dims: Mapped[int | None] = mapped_column(Integer)  # fixed by the first embedded chunk
+    chunk_size: Mapped[int] = mapped_column(Integer, default=900)
+    chunk_overlap: Mapped[int] = mapped_column(Integer, default=150)
+
+
+class KnowledgeDocument(TimestampMixin, Base):
+    __tablename__ = "knowledge_documents"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    collection_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("knowledge_collections.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(300))
+    mime: Mapped[str] = mapped_column(String(100), default="text/plain")
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    sha256: Mapped[str] = mapped_column(String(64))
+    text: Mapped[str] = mapped_column(Text, default="")
+    pages: Mapped[list[Any] | None] = mapped_column()  # [[page, text], ...] for PDFs
+    # queued -> processing -> ready | failed
+    status: Mapped[str] = mapped_column(String(16), default="queued", index=True)
+    error: Mapped[str | None] = mapped_column(Text)
+    chunk_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class KnowledgeChunk(Base):
+    __tablename__ = "knowledge_chunks"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("knowledge_documents.id", ondelete="CASCADE"), index=True
+    )
+    collection_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("knowledge_collections.id", ondelete="CASCADE"), index=True
+    )
+    ord: Mapped[int] = mapped_column(Integer)
+    page: Mapped[int | None] = mapped_column(Integer)
+    text: Mapped[str] = mapped_column(Text)
+    # L2-normalised embedding (portable real[]; pgvector is used for scoring when installed).
+    embedding: Mapped[list[float]] = mapped_column(ARRAY(Float))
+
+
+class Memory(Base):
+    """A fact an agent chose to remember (agent-scoped; never shared across agents)."""
+
+    __tablename__ = "memories"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agents.id", ondelete="CASCADE"), index=True
+    )
+    content: Mapped[str] = mapped_column(Text)
+    embedding: Mapped[list[float] | None] = mapped_column(ARRAY(Float))
+    run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("runs.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

@@ -62,6 +62,7 @@ Verified versions (Phase 0): Python 3.12, LangGraph 1.2.22, langchain-core 1.8, 
 | `tools/external.py`, `tools/mcp_client.py` | Runtime-defined tools (`McpTool`, `HttpTool`) satisfying the `ToolLike` protocol: JSON-Schema argument validation, capped/untrusted-marked output, outbound host allow-list + SSRF guard; MCP client on the official `mcp` SDK (v2): stdio (minimal child env) and Streamable HTTP, one session per operation, bounded by timeouts |
 | `services/capability_service.py` | MCP server registry (admin, audited, encrypted env/headers), discovery (tools imported disabled), enable/disable, custom HTTP tools, grant validation and per-run construction of an agent's external tools (`ToolRegistry.extended`) |
 | `services/approval_service.py` | Approval policies (globs), request creation when a run pauses, decisions (editor+, audited), expiry (worker maintenance), continuation-run creation; `ToolNode` holds calls whose grant `requires_approval`; `AgentRun` answers them on resume (`ResumeDecisions`) before continuing the graph |
+| `knowledge/text.py`, `runtime/embeddings.py`, `services/knowledge_service.py` | Extraction (pypdf for PDFs) and paragraph-aware chunking; embeddings via Ollama `/api/embed`, OpenAI-compatible `/embeddings` or Gemini; ingestion as a durable worker job; hybrid retrieval = vector similarity (pgvector `<=>` when the extension exists, SQL array dot product otherwise; vectors stored L2-normalised as `real[]`) + Postgres full-text (`tsvector`/GIN), fused with RRF; agent memories; per-run `knowledge__search` / `memory__*` tools (closures with their own sessions, so the runtime stays DB-free) |
 | `crypto.py` | `SecretBox`: Fernet/MultiFernet encryption of stored credentials (key rotation) |
 | `services/provider_service.py` | Connections CRUD (admin, audited, SSRF-guarded base URLs), `ProviderResolver` (workspace-scoped connection → provider with decrypted key in memory + capability overrides), health checks, model listing, tool-support overrides and the live probe |
 | `runtime/graph.py`, `state.py` | LangGraph `StateGraph` definition and state |
@@ -113,6 +114,8 @@ easy-access-agents/
 ```
 
 ## 5. Database schema
+
+**Knowledge & memory (V2, migration `0008`):** `knowledge_collections`, `knowledge_documents` (extracted text, status), `knowledge_chunks` (text, page, `embedding real[]`, generated `tsv` + GIN), `memories` (agent-scoped, generated `tsv`). The migration enables pgvector only if the server has it.
 
 **Agent versions & skills v2 (V2, migration `0005`):** `agent_versions(agent_id, version, write_config, runtime_config, note, created_by)` — the `agents` row is the draft; a published version is immutable and carries the resolved runtime config (skill text frozen). `conversations.kind` (`chat` | `playground`), `runs.agent_version`. `skills` gain `category`, `tags text[]`, `version`; `skill_versions` keeps earlier states.
 

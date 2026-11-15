@@ -60,7 +60,9 @@ export function mockApi(userRoutes: Record<string, unknown | ((init?: RequestIni
     const path = url.pathname.replace(/^\/api/, "") + url.search;
     const method = init?.method ?? "GET";
     const headers = new Headers(init?.headers);
-    calls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined, headers });
+    const raw = init?.body;
+    const sent = typeof raw === "string" ? (JSON.parse(raw) as unknown) : (raw ?? undefined);
+    calls.push({ method, path, body: sent, headers });
     const handler = routes[`${method} ${path}`];
     if (handler === undefined) {
       return new Response(JSON.stringify({ title: "Not found", detail: `No mock for ${method} ${path}` }), {

@@ -17,6 +17,7 @@ from app.api.routers import (
     capabilities,
     conversations,
     health,
+    knowledge,
     org,
     providers,
     runs,
@@ -76,11 +77,12 @@ def create_app(
     app.state.provider_registry = provider_registry or build_default_providers(
         settings.ollama_base_url
     )
-    app.state.provider_resolver = ProviderResolver(
-        app.state.provider_registry,
-        SecretBox(settings.secret_encryption_key.get_secret_value()),
-        **({"factory": provider_factory} if provider_factory else {}),
+    resolver = ProviderResolver(
+        app.state.provider_registry, SecretBox(settings.secret_encryption_key.get_secret_value())
     )
+    if provider_factory is not None:
+        resolver.factory = provider_factory
+    app.state.provider_resolver = resolver
     app.state.run_worker = None
     app.state.login_limiter = SlidingWindowLimiter(settings.login_attempts_per_5min, 300)
     app.state.register_limiter = SlidingWindowLimiter(settings.registrations_per_hour, 3600)
@@ -97,6 +99,7 @@ def create_app(
     app.include_router(agents.templates_router, prefix="/api")
     app.include_router(capabilities.router, prefix="/api")
     app.include_router(approvals.router, prefix="/api")
+    app.include_router(knowledge.router, prefix="/api")
     app.include_router(skills.templates_router, prefix="/api")
     return app
 

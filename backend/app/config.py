@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     # Hosts custom HTTP tools may call (comma-separated; "*.example.com" wildcards).
     custom_tool_allowed_hosts: str = ""
 
+    # Knowledge uploads larger than this are rejected.
+    knowledge_max_upload_bytes: int = Field(default=10_000_000, ge=1000)
+
     # Pending approval requests expire after this long (then count as rejected).
     approval_ttl_s: int = Field(default=86_400, ge=60)
 

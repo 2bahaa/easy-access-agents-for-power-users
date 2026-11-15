@@ -25,6 +25,9 @@ export const keys = {
   conversation: (id: string) => ["conversation", id] as const,
   runEvents: (runId: string) => ["runs", runId, "events"] as const,
   members: ["members"] as const,
+  collections: ["knowledge", "collections"] as const,
+  documents: (id: string) => ["knowledge", "documents", id] as const,
+  memories: (agentId: string) => ["memories", agentId] as const,
   approvals: (params: Record<string, string | undefined>) => ["approvals", params] as const,
   approvalPolicies: ["approval-policies"] as const,
   mcpServers: ["mcp-servers"] as const,
@@ -387,5 +390,75 @@ export function useDeleteApprovalPolicy() {
   return useMutation({
     mutationFn: (id: string) => api.deleteApprovalPolicy(id),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.approvalPolicies }),
+  });
+}
+
+// ---- knowledge & memory ----
+
+export const useCollections = () => useQuery({ queryKey: keys.collections, queryFn: api.listCollections });
+
+export const useDocuments = (collectionId: string | undefined) =>
+  useQuery({
+    queryKey: keys.documents(collectionId ?? ""),
+    queryFn: () => api.listDocuments(collectionId!),
+    enabled: !!collectionId,
+    // Poll while anything is still being indexed.
+    refetchInterval: (q) => (q.state.data?.some((d) => d.status === "queued" || d.status === "processing") ? 1500 : false),
+  });
+
+export function useCreateCollection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.createCollection,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.collections }),
+  });
+}
+
+export function useDeleteCollection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteCollection(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.collections }),
+  });
+}
+
+export function useUploadDocument(collectionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => api.uploadDocument(collectionId, file),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.documents(collectionId) });
+      void qc.invalidateQueries({ queryKey: keys.collections });
+    },
+  });
+}
+
+export function useDeleteDocument(collectionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteDocument(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.documents(collectionId) });
+      void qc.invalidateQueries({ queryKey: keys.collections });
+    },
+  });
+}
+
+export const useMemories = (agentId: string | undefined) =>
+  useQuery({ queryKey: keys.memories(agentId ?? ""), queryFn: () => api.listMemories(agentId!), enabled: !!agentId });
+
+export function useDeleteMemory(agentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteMemory(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.memories(agentId) }),
+  });
+}
+
+export function useClearMemories(agentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.clearMemories(agentId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.memories(agentId) }),
   });
 }

@@ -20,7 +20,7 @@ jobs:
         working-directory: backend
     services:
       postgres:
-        image: postgres:17-alpine
+        image: pgvector/pgvector:pg17  # exercises the pgvector search path
         env:
           POSTGRES_USER: agents
           POSTGRES_PASSWORD: agents

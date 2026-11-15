@@ -153,3 +153,31 @@ class FakeProvider:
 
     def is_provider_error(self, exc: BaseException) -> bool:
         return isinstance(exc, ConnectionError)
+
+
+class FakeEmbedder:
+    """Deterministic bag-of-words embeddings (hashed into 64 dims, L2-normalised): texts
+    sharing words are similar. Model "broken" fails like an unreachable provider."""
+
+    dims = 64
+
+    def __init__(self, model: str, calls: list[list[str]] | None = None) -> None:
+        self.model = model
+        self.calls = calls if calls is not None else []
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        import hashlib
+        import math
+
+        if self.model == "broken":
+            raise ProviderError("The embedding provider is not reachable")
+        self.calls.append(list(texts))
+        out = []
+        for t in texts:
+            vec = [0.0] * self.dims
+            for word in re.findall(r"[a-z0-9]+", t.lower()):
+                h = int(hashlib.sha256(word.encode()).hexdigest(), 16)
+                vec[h % self.dims] += 1.0
+            norm = math.sqrt(sum(x * x for x in vec)) or 1.0
+            out.append([x / norm for x in vec])
+        return out

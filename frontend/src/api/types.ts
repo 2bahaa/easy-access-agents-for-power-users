@@ -113,7 +113,7 @@ export interface ToolInfo {
   config_schema: JsonSchema;
   timeout_s: number;
   /** native = built into the server; mcp/http = defined in this workspace. */
-  source?: "native" | "mcp" | "http";
+  source?: "native" | "mcp" | "http" | "knowledge" | "memory";
 }
 
 export type ProviderKind = "ollama" | "openai" | "openai_compatible" | "anthropic" | "gemini";
@@ -423,5 +423,52 @@ export interface ApprovalPolicy {
   id: string;
   tool_pattern: string;
   agent_id: string | null;
+  created_at: string;
+}
+
+// ---- knowledge & memory ----
+
+export interface KnowledgeCollection {
+  id: string;
+  name: string;
+  description: string;
+  embedding_provider: string;
+  embedding_connection_id: string | null;
+  embedding_model: string;
+  dims: number | null;
+  chunk_size: number;
+  chunk_overlap: number;
+  document_count: number;
+  chunk_count: number;
+  created_at: string;
+}
+
+export interface KnowledgeDocument {
+  id: string;
+  collection_id: string;
+  title: string;
+  mime: string;
+  size_bytes: number;
+  status: "queued" | "processing" | "ready" | "failed";
+  error: string | null;
+  chunk_count: number;
+  created_at: string;
+}
+
+export interface SearchHit {
+  document_id: string;
+  document_title: string;
+  collection_id: string;
+  chunk: number;
+  page: number | null;
+  text: string;
+  score: number;
+}
+
+export interface AgentMemory {
+  id: string;
+  agent_id: string;
+  content: string;
+  run_id: string | null;
   created_at: string;
 }

@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.crypto import SecretBox, SecretDecryptionError, SecretsNotConfiguredError, secret_hint
 from app.db.models import Agent, AgentVersion, ModelCapabilityOverride, ProviderConnection
+from app.runtime.embeddings import Embedder, HttpEmbedder
 from app.runtime.providers.base import ModelCapabilities, ModelInfo, Provider, ProviderError
 from app.runtime.providers.cloud import ProviderSpec
 from app.runtime.providers.registry import ProviderRegistry, UnknownProviderError, build_provider
@@ -94,6 +95,7 @@ class ProviderResolver:
     registry: ProviderRegistry  # built-in providers (server configuration)
     secrets: SecretBox
     factory: ProviderFactory = build_provider
+    embedder_factory: Callable[[ProviderSpec, str], Embedder] = HttpEmbedder
 
     def spec_for(self, conn: ProviderConnection) -> ProviderSpec:
         api_key = None

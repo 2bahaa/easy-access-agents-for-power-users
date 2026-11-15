@@ -6,6 +6,7 @@ import { api, ApiError, errorMessage } from "../../api/client";
 import {
   useAgent,
   useAgentTemplates,
+  useCollections,
   useDeleteAgent,
   useDuplicateAgent,
   useModels,
@@ -37,6 +38,7 @@ export function AgentEditorPage() {
   const skills = useSkills();
   const tools = useTools();
   const providers = useProviders();
+  const collections = useCollections();
   const [providerOverride, setProviderOverride] = useState<string | null>(null);
   const provider = providerOverride ?? agent.data?.connection_id ?? agent.data?.provider ?? "ollama";
   const models = useModels(provider);
@@ -198,6 +200,7 @@ export function AgentEditorPage() {
           initialValues={initialValues}
           isNew={isNew}
           providers={providers.data}
+          collections={collections.data}
           onProviderChange={setProviderOverride}
           models={models.data}
           modelsLoading={models.isPending}

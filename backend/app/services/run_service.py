@@ -38,13 +38,14 @@ from app.services import (
     audit_service,
     capability_service,
     conversation_service,
+    knowledge_service,
     run_queue,
 )
 from app.services.errors import ConflictError, NotFoundError
 from app.services.principal import Principal
 from app.services.provider_service import ProviderResolver
 from app.tools.base import ToolContext
-from app.tools.external import is_external
+from app.tools.external import is_data_tool, is_external
 from app.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -250,6 +251,7 @@ async def prepare_agent_run(
     settings: Settings,
     resolver: ProviderResolver,
     tools: ToolRegistry,
+    session_factory: SessionFactory | None = None,
 ) -> AgentRun:
     """Rebuild a claimed run's runtime inputs from the database (worker side)."""
     config = AgentConfig.model_validate(run.agent_snapshot)
@@ -263,11 +265,24 @@ async def prepare_agent_run(
     user_message_id = next(
         (m.id for m in messages if m.run_id == run.id and m.role == "user"), None
     )
-    external = [t.name for t in config.tools if is_external(t.name)]
+    external = [t.name for t in config.tools if is_external(t.name) and not is_data_tool(t.name)]
     if external:  # only the agent's granted, still-enabled external tools (secrets in memory)
         tools = tools.extended(
             await capability_service.external_tools(
                 session, run.workspace_id, settings, resolver.secrets, names=external
+            )
+        )
+    data_grants = {t.name: t.config for t in config.tools if is_data_tool(t.name)}
+    if data_grants and session_factory is not None:
+        tools = tools.extended(
+            knowledge_service.runtime_tools(
+                session_factory,
+                resolver,
+                settings,
+                run.workspace_id,
+                run.agent_id,
+                run.id,
+                data_grants,
             )
         )
     resume = await approval_service.decisions_for(session, run.resume_of) if run.resume_of else None

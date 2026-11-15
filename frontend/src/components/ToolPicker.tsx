@@ -16,10 +16,12 @@ export interface ToolPickerProps {
   disabledReason?: string;
   /** A non-blocking caution shown above the list (e.g. unknown tool support). */
   warning?: string;
+  /** Knowledge collections the `knowledge__search` tool can be pointed at. */
+  collections?: Array<{ id: string; name: string }>;
 }
 
 /** Enable tools for an agent and edit each tool's per-agent configuration. */
-export function ToolPicker({ tools, value, onChange, disabledReason, warning }: ToolPickerProps) {
+export function ToolPicker({ tools, value, onChange, disabledReason, warning, collections = [] }: ToolPickerProps) {
   const selected = new Map(value.map((t) => [t.name, t]));
 
   const toggle = (tool: ToolInfo, on: boolean) => {
@@ -100,6 +102,30 @@ export function ToolPicker({ tools, value, onChange, disabledReason, warning }: 
                   />
                   Require human approval before each call
                 </label>
+              )}
+              {enabled && tool.name === "knowledge__search" && (
+                <fieldset className="border-t border-brand-500/15 px-3 py-2.5">
+                  <legend className="sr-only">Collections</legend>
+                  <p className="mb-1.5 text-xs font-medium">Collections this agent may search</p>
+                  {collections.length === 0 && <p className="text-xs text-warning">Create a collection on the Knowledge page first.</p>}
+                  {collections.map((c) => {
+                    const ids = (current.config.collection_ids as string[] | undefined) ?? [];
+                    return (
+                      <label key={c.id} className="flex items-center gap-2 py-0.5 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={ids.includes(c.id)}
+                          onChange={(e) =>
+                            setConfig(tool.name, {
+                              collection_ids: e.target.checked ? [...ids, c.id] : ids.filter((x) => x !== c.id),
+                            })
+                          }
+                        />
+                        {c.name}
+                      </label>
+                    );
+                  })}
+                </fieldset>
               )}
               {enabled && hasFields(tool.config_schema) && (
                 <div className="animate-fade-in border-t border-brand-500/15 px-3 pt-3 pb-3.5">

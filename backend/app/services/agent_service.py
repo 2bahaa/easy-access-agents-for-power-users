@@ -13,11 +13,11 @@ from app.db.models import Agent, AgentSkill, AgentTool, Skill
 from app.runtime.providers.base import ProviderError
 from app.schemas.agents import AgentRead, AgentWrite, ModelParams, ToolSelection
 from app.schemas.skills import SkillRef
-from app.services import audit_service, capability_service, provider_service
+from app.services import audit_service, capability_service, knowledge_service, provider_service
 from app.services.errors import ConflictError, DomainValidationError, NotFoundError
 from app.services.principal import Principal
 from app.services.provider_service import ProviderResolver
-from app.tools.external import is_external
+from app.tools.external import is_data_tool, is_external
 from app.tools.registry import ToolConfigError, ToolRegistry, UnknownToolError
 
 
@@ -110,7 +110,11 @@ async def validate_external_tools(
 ) -> dict[str, dict[str, Any]]:
     out = dict(configs)
     for name, config in configs.items():
-        if is_external(name):
+        if is_data_tool(name):
+            out[name] = await knowledge_service.normalize_grant(
+                session, principal.workspace_id, name, config
+            )
+        elif is_external(name):
             out[name] = await capability_service.normalize_external_grant(
                 session, principal.workspace_id, settings, resolver.secrets, name, config
             )

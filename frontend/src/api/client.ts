@@ -20,8 +20,12 @@ import type {
   ProbeResult,
   ProviderConnectionWrite,
   AgentExportDocument,
+  AgentMemory,
   AgentTemplate,
   Approval,
+  KnowledgeCollection,
+  KnowledgeDocument,
+  SearchHit,
   ApprovalPolicy,
   CustomTool,
   CustomToolWrite,
@@ -208,6 +212,35 @@ export const api = {
     return response.text();
   },
   importSkill: (markdown: string) => request<Skill>("/skills/import", json("POST", { markdown })),
+
+  // ---- knowledge & memory ----
+  listCollections: () => request<KnowledgeCollection[]>("/knowledge/collections"),
+  createCollection: (data: {
+    name: string;
+    description?: string;
+    embedding_provider?: string;
+    embedding_connection_id?: string | null;
+    embedding_model: string;
+    chunk_size?: number;
+    chunk_overlap?: number;
+  }) => request<KnowledgeCollection>("/knowledge/collections", json("POST", data)),
+  deleteCollection: (id: string) => request<void>(`/knowledge/collections/${id}`, { method: "DELETE" }),
+  listDocuments: (collectionId: string) => request<KnowledgeDocument[]>(`/knowledge/collections/${collectionId}/documents`),
+  uploadDocument: async (collectionId: string, file: File): Promise<KnowledgeDocument> => {
+    const response = await authFetch(
+      `${API_BASE_URL}/knowledge/collections/${collectionId}/documents?filename=${encodeURIComponent(file.name)}`,
+      { method: "POST", body: file, headers: { "Content-Type": file.type || "application/octet-stream", Accept: "application/json" } },
+    );
+    if (!response.ok) throw await toApiError(response);
+    return (await response.json()) as KnowledgeDocument;
+  },
+  deleteDocument: (id: string) => request<void>(`/knowledge/documents/${id}`, { method: "DELETE" }),
+  reindexDocument: (id: string) => request<KnowledgeDocument>(`/knowledge/documents/${id}/reindex`, { method: "POST" }),
+  searchKnowledge: (collection_ids: string[], query: string, top_k = 5) =>
+    request<SearchHit[]>("/knowledge/search", json("POST", { collection_ids, query, top_k })),
+  listMemories: (agentId: string) => request<AgentMemory[]>(`/agents/${agentId}/memories`),
+  deleteMemory: (id: string) => request<void>(`/memories/${id}`, { method: "DELETE" }),
+  clearMemories: (agentId: string) => request<void>(`/agents/${agentId}/memories`, { method: "DELETE" }),
 
   // ---- approvals ----
   listApprovals: (params: { status?: string; conversation_id?: string; run_id?: string } = {}) => {

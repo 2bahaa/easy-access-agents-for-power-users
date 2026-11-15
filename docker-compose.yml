@@ -6,7 +6,9 @@
 
 services:
   db:
-    image: postgres:17-alpine
+    # For new installs prefer pgvector/pgvector:pg17 (faster knowledge search). Do not switch
+    # an existing data volume between alpine and debian images without a dump/restore.
+    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-eaa}

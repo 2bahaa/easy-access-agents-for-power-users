@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 from app.api.deps import PrincipalDep, ProviderResolverDep, SessionDep, SettingsDep, ToolRegistryDep
 from app.schemas.tools import ToolInfo
-from app.services import capability_service
+from app.services import capability_service, knowledge_service
 from app.tools.base import ToolLike
 
 router = APIRouter(prefix="/tools", tags=["tools"])
@@ -31,7 +31,19 @@ async def list_tools(
     external = await capability_service.external_tools(
         session, principal.workspace_id, settings, resolver.secrets
     )
-    return [_info(t, "native", settings.tool_timeout_s) for t in registry.all()] + [
-        _info(t, "mcp" if t.name.startswith("mcp__") else "http", settings.tool_timeout_s)
-        for t in sorted(external, key=lambda x: x.name)
+    data = [
+        _info(
+            t,
+            "knowledge" if t.name.startswith("knowledge__") else "memory",
+            settings.tool_timeout_s,
+        )
+        for t in knowledge_service.describe_tools()
     ]
+    return (
+        [_info(t, "native", settings.tool_timeout_s) for t in registry.all()]
+        + data
+        + [
+            _info(t, "mcp" if t.name.startswith("mcp__") else "http", settings.tool_timeout_s)
+            for t in sorted(external, key=lambda x: x.name)
+        ]
+    )

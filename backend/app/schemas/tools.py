@@ -9,4 +9,4 @@ class ToolInfo(BaseModel):
     args_schema: dict[str, Any]
     config_schema: dict[str, Any]
     timeout_s: float
-    source: Literal["native", "mcp", "http"] = "native"
+    source: Literal["native", "mcp", "http", "knowledge", "memory"] = "native"

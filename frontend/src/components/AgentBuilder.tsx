@@ -53,6 +53,8 @@ const CONTEXT_SIZES = [2048, 4096, 8192, 16384, 32768, 65536];
 
 export interface AgentBuilderProps {
   initialValues: AgentFormValues;
+  /** Knowledge collections (for the knowledge search tool). */
+  collections?: Array<{ id: string; name: string }>;
   /** Providers the agent can run on (built-ins and workspace connections). */
   providers?: ProviderInfo[];
   /** Called with the provider ref (`name`) whose models should be loaded. */
@@ -82,6 +84,7 @@ export interface AgentBuilderProps {
  */
 export function AgentBuilder({
   initialValues,
+  collections,
   providers,
   onProviderChange,
   models,
@@ -436,6 +439,7 @@ export function AgentBuilder({
           >
             <ToolPicker
               tools={tools}
+              collections={collections}
               value={values.tools}
               onChange={(next) => set("tools", next)}
               disabledReason={

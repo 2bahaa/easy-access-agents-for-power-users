@@ -11,8 +11,8 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 | 3 | Multi-provider | done | a5641fb |
 | 4 | Agent platform (versions, templates) & skills v2 | done | b206514 |
 | 5 | Tools & MCP | done | 46e5391 |
-| 6 | Human approval | done | (this commit) |
-| 7 | Knowledge & memory | pending | – |
+| 6 | Human approval | done | 102a708 |
+| 7 | Knowledge & memory | done | (this commit) |
 | 8 | Visual workflows | pending | – |
 | 9 | Multi-agent teams | pending | – |
 | 10 | Analytics & observability | pending | – |
@@ -93,6 +93,16 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 - Only authenticated editors decide (the model cannot); decisions are audited; requests expire (`APPROVAL_TTL_S`); policies are admin-managed.
 - Studio: approval cards (inspect/edit JSON args, note) in the chat and an Approvals inbox (pending, history, policies) with a live nav badge; per-tool "Require human approval" in the Agent Builder; timeline shows held calls and the paused state.
 - Tests: backend 265 passed / 2 skipped (+7: hold/approve/continue, reject with note, edited & invalid args, mixed calls, policies, RBAC/isolation/double-decide, expiry, cancel); frontend 27 files / 149 passed (+6). ruff, format, mypy, typecheck, lint, build clean.
+
+### Phase 7 — Knowledge & memory
+- Collections with a per-collection embedding model (built-in Ollama or a provider connection; Anthropic rejected — no embeddings API); uploads (txt/md/csv/json/log/rst/pdf via pypdf) are de-duplicated, extracted at upload and indexed by the run worker (durable job, status polling, re-index).
+- Hybrid retrieval: vector similarity + Postgres full-text, fused with RRF; citations (document, page, chunk); output marked untrusted. pgvector is used when installed (CI uses `pgvector/pgvector:pg17`); otherwise an SQL-array fallback — a test checks both rank the same.
+- Agent memory: `memory__save`/`memory__search` tools, agent-scoped (other agents cannot read it), list/forget/clear in the UI.
+- Decision: the local Docker DB stays `postgres:17-alpine` (switching an existing volume to the Debian-based pgvector image risks collation-dependent index corruption); `POSTGRES_IMAGE` lets new installs choose pgvector.
+- Manual check: real embeddings via Ollama `nomic-embed-text` (pulled, 274 MB): 768 dims, normalised, related 0.76 vs unrelated 0.31. Non-embedding models now get an actionable error.
+- Studio: Knowledge & memory page (collections, uploads with live status, search tester with citations, per-agent memories); collection picker for `knowledge__search` in the Agent Builder.
+- New dep (justified): `pypdf` (PDF text extraction, pure Python).
+- Tests: backend 283 passed / 2 skipped (+18: extraction/chunking/RRF, ingestion via the worker, hybrid search, failures, deletion, isolation, agent RAG with citations, private memory, backend parity); frontend 28 files / 153 passed (+4). ruff, format, mypy, typecheck, lint, build clean.
 
 ## Known issues
 - Frontend bundle is 574 kB (minified); route-level code splitting planned with the workflow editor (Phase 8).

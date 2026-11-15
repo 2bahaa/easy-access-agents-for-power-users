@@ -95,6 +95,20 @@ Save-time checks: unknown tool / invalid tool config / unknown provider / limits
 |---|---|---|
 | GET | `/tools` | `ToolInfo[]`: `{name, description, args_schema, config_schema, timeout_s}` (JSON Schemas) |
 
+### Knowledge & memory (V2)
+| Method | Path | Notes |
+|---|---|---|
+| GET/POST | `/knowledge/collections` | `{name, description, embedding_provider: "ollama" | embedding_connection_id, embedding_model, chunk_size, chunk_overlap}` (editor). The embedding model is fixed per collection (`dims` set by the first indexed chunk) |
+| DELETE | `/knowledge/collections/{id}` | Cascades to documents and chunks |
+| GET/POST | `/knowledge/collections/{id}/documents` | Upload = **raw request body** with `?filename=` (txt, md, csv, json, log, rst, pdf; ≤ `KNOWLEDGE_MAX_UPLOAD_BYTES`; duplicate content 409). Indexed by a run worker: `queued → processing → ready | failed` |
+| DELETE | `/knowledge/documents/{id}` | Deletes its chunks |
+| POST | `/knowledge/documents/{id}/reindex` | Queue again (e.g. after a failure) |
+| POST | `/knowledge/search` | `{collection_ids, query, top_k}` → hybrid hits `{document_title, chunk, page, text, score}` |
+| GET/DELETE | `/agents/{id}/memories` | List / forget all of an agent's memories |
+| DELETE | `/memories/{id}` | Forget one memory |
+
+Agents use these through tools granted like others: `knowledge__search` (config `{collection_ids: [...]}`, validated against the workspace), `memory__save` and `memory__search` (agent-scoped). Tool output is marked as untrusted and numbered for citations (`[n] (document, page, chunk)`).
+
 ### Human approval (V2)
 A tool call requires approval when the agent's tool grant has `requires_approval: true` (`ToolSelection` in `AgentWrite`) or a workspace policy glob matches its name (policies apply to every run, published or draft, and are frozen into the run snapshot). Such a call is **not executed**: the run emits `approval.requested` and ends with the terminal event `run.waiting_approval` (run status `waiting_approval`, which still blocks new messages in the conversation). Every pending call becomes an approval request.
 

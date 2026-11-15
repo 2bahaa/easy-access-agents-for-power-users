@@ -11,7 +11,12 @@ async def test_list_tools(client: AsyncClient) -> None:
     resp = await client.get("/api/tools")
     assert resp.status_code == 200
     tools = {t["name"]: t for t in resp.json()}
-    assert set(tools) == {"calculator", "file_reader"}
+    assert {n for n, t in tools.items() if t["source"] == "native"} == {"calculator", "file_reader"}
+    assert {n for n, t in tools.items() if t["source"] in ("knowledge", "memory")} == {
+        "knowledge__search",
+        "memory__save",
+        "memory__search",
+    }
     calc = tools["calculator"]
     assert calc["args_schema"]["required"] == ["expression"]
     assert calc["timeout_s"] == 2.0

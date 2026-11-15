@@ -29,7 +29,7 @@ from app.main import create_app
 from app.runtime.providers.cloud import ProviderSpec
 from app.runtime.providers.registry import ProviderRegistry
 from app.services.principal import Principal
-from tests.fakes import FakeProvider
+from tests.fakes import FakeEmbedder, FakeProvider
 
 
 def _test_database_url() -> str:
@@ -158,6 +158,7 @@ async def app(
         provider_registry=ProviderRegistry([fake_provider]),
         provider_factory=factory,  # type: ignore[arg-type]
     )
+    application.state.provider_resolver.embedder_factory = lambda spec, model: FakeEmbedder(model)
     async with application.router.lifespan_context(application):
         await asyncio.wait_for(application.state.run_worker.ready.wait(), timeout=10)
         yield application

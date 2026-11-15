@@ -26,7 +26,7 @@ from app.config import Settings
 from app.db.models import Run
 from app.runtime.events import TERMINAL_TYPES, AgentEvent
 from app.runtime.executor import AgentRun
-from app.services import approval_service, run_queue, run_service
+from app.services import approval_service, knowledge_service, run_queue, run_service
 from app.services.provider_service import ProviderResolver
 from app.services.pubsub import RUNS_CHANNEL, listen
 from app.tools.registry import ToolRegistry
@@ -54,6 +54,8 @@ class RunWorker:
         self._tasks: set[asyncio.Task[None]] = set()
         self._main: asyncio.Task[None] | None = None
         self._wake = asyncio.Event()
+        self._ingest_wake = asyncio.Event()
+        self._ingest: asyncio.Task[None] | None = None
         self.ready = asyncio.Event()  # set once LISTEN is active (tests, startup logs)
 
     # ---- lifecycle ----------------------------------------------------------------
@@ -89,10 +91,12 @@ class RunWorker:
                     self.ready.set()
                     await self._reap()
                     maintenance = asyncio.create_task(self._maintenance())
+                    ingest = asyncio.create_task(self._ingest_loop())
                     try:
                         await self._loop(notifications)
                     finally:
                         maintenance.cancel()
+                        ingest.cancel()
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -119,7 +123,9 @@ class RunWorker:
                     self._on_notification(notifications.get_nowait())
 
     def _on_notification(self, payload: str) -> None:
-        if payload.startswith("cancel:"):
+        if payload == "ingest":
+            self._ingest_wake.set()
+        elif payload.startswith("cancel:"):
             with contextlib.suppress(ValueError):
                 self._cancel_local(uuid.UUID(payload.removeprefix("cancel:")))
 
@@ -141,6 +147,20 @@ class RunWorker:
     def _on_task_done(self, task: "asyncio.Task[None]") -> None:
         self._tasks.discard(task)
         self._wake.set()  # a slot is free: claim more
+
+    async def _ingest_loop(self) -> None:
+        """Index queued knowledge documents one at a time (outside the run slots)."""
+        while True:
+            try:
+                while await knowledge_service.process_next_document(
+                    self.session_factory, self.resolver, self.settings
+                ):
+                    pass
+            except Exception:
+                logger.exception("Knowledge ingestion loop failed")
+            self._ingest_wake.clear()
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(self._ingest_wake.wait(), self.settings.run_poll_interval_s)
 
     async def _maintenance(self) -> None:
         """Heartbeats for owned runs, missed-cancel recovery and reaping of dead workers."""
@@ -182,6 +202,7 @@ class RunWorker:
                     settings=self.settings,
                     resolver=self.resolver,
                     tools=self.tools,
+                    session_factory=self.session_factory,
                 )
                 cancel_requested = run.cancel_requested
         except Exception:
