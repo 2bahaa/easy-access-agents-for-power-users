@@ -15,8 +15,8 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 | 7 | Knowledge & memory | done | 1440a68 |
 | 8 | Visual workflows | done | 092036d |
 | 9 | Multi-agent teams | done | 7f8ec7b |
-| 10 | Analytics & observability | done | (this commit) |
-| 11 | SDK packaging | pending | – |
+| 10 | Analytics & observability | done | 4988a87 |
+| 11 | SDK packaging | done | (this commit) |
 | 12 | Production hardening | pending | – |
 
 ## Architectural decisions
@@ -128,6 +128,13 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 - Observability: JSON structured logs with `run_id` and `trace_id`; OpenTelemetry spans for runs and tool calls; OTLP/HTTP exporter when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. Tracing is off by default.
 - New deps (justified): `opentelemetry-api`, `opentelemetry-sdk`, `opentelemetry-exporter-otlp-proto-http` (vendor-neutral tracing; works with Jaeger, Tempo, Langfuse and others).
 - Tests: backend 333 passed / 2 skipped (+3: history filters/pagination/tenant isolation, summary figures checked against the fake provider's reported usage, spans captured with an in-memory exporter, JSON log context); frontend 167 passed (+2). ruff, mypy, typecheck, lint and build clean.
+
+### Phase 11: SDK packaging
+- `packages/agent-ui` (`@easy-access/agent-ui`): an ESM library with `styles.css` and `.d.ts` types, built from the Studio's prop-driven components through a single public entry (`frontend/src/sdk/index.ts`) with `npm run build:sdk`. React, lucide, `@xyflow/react` and dagre are peer dependencies, not bundled (verified in the output).
+- Exports: AgentChat, AgentRunTimeline, AgentBuilder, ApprovalCard, ModelPicker, ToolPicker, SkillSelector, WorkflowEditor, UsageChart and Markdown; the event reducers and transcript helpers; the protocol types; and an optional `createAgentClient` transport (bearer token or API key, workspace header, SSE streaming, problem+json errors).
+- Example host app (`frontend/examples/host-app`): a chat with a live timeline that uses only the package. `npm run build:example` builds it against the built `dist`, the same way an external consumer would. CI runs `build:sdk` and `build:example`.
+- Decision: one source tree (the Studio's `components/`) with a packaging entry, instead of moving the components into a separate npm workspace. This avoids churn in the Docker and CI layouts, and the "no fetching in components" rule keeps the boundary clean.
+- Tests: frontend 170 passed (+3: export surface, rendering without app context, client headers/streaming/errors). typecheck, lint, app build, SDK build and example build clean.
 
 ## Known issues
 - Main frontend bundle is ~678 kB minified (203 kB gzip); the workflow editor is split out; further route splitting is a Phase 12 task.

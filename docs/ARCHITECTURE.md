@@ -204,3 +204,6 @@ Inside Docker, `DATABASE_URL` and `OLLAMA_BASE_URL` are set explicitly in `docke
 | Visual workflow editor | React Flow over a graph definition stored alongside agents |
 | Multi-tenancy / auth | `owner_id` columns via migration + auth dependency in `api/deps.py` |
 | UI SDK | Package `frontend/src/components/` |
+
+## Agent UI SDK (V2)
+`frontend/src/sdk/index.ts` is the SDK's public boundary. `npm run build:sdk` packages it into `packages/agent-ui` (`@easy-access/agent-ui`: ESM + `styles.css` + types; React, lucide, `@xyflow/react` and dagre are peer dependencies). Everything exported is prop-driven; `createAgentClient` is an optional fetch/SSE transport. `frontend/examples/host-app` consumes the built package. See `packages/agent-ui/README.md`.
