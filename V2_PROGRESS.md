@@ -17,7 +17,7 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 | 9 | Multi-agent teams | done | 7f8ec7b |
 | 10 | Analytics & observability | done | 4988a87 |
 | 11 | SDK packaging | done | 34b7146 |
-| 12 | Production hardening | done | (this commit) |
+| 12 | Production hardening | done | b504905 |
 
 ## Architectural decisions
 - Foundation first (durable runs + auth before feature phases).
@@ -149,6 +149,12 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 `backend/scripts/e2e_journey.py` ran against a local API with real Ollama on a scratch database (`eaa_e2e`), with the embedded worker and JSON logs. Steps: register → health → model discovery (tools capability) → create an agent with calculator + file_reader (approval required) and a skill → publish v1 → streamed chat with a calculator call → a file_reader call pauses as `waiting_approval` → shown in the inbox → approved (audited) → the continuation run executes the tool → build, validate, publish and run a workflow (start → agent → llm → end) → run history, analytics and persisted timeline.
 - With `qwen2.5:3b`: 15/18 checks passed on the first run; the three failures were bugs in the script (wrong event field name, wrong expected run count), fixed afterwards. Verified from the database: answers "The result of 1234 * 5678 is 7006652." and "The inverter warranty lasts 12 years."; workflow output "1000 | The result is 1000."; analytics 4 runs, 7 tool calls, 2587/124 tokens.
 - With `qwen3:4b` on this 2-core CPU, each turn takes about 200–300 s (it reasons silently first), so chat runs hit the default `RUN_TIMEOUT_CAP_S=300`; the workflow path completed. On slow hardware, raise `RUN_TIMEOUT_CAP_S` or use a smaller tool-capable model.
+
+### Final verification (after b504905)
+- Team templates: **New workflow → Multi-agent team** builds runnable specs from the chosen agents in three patterns: Supervisor team, Sequential pipeline, Parallel specialists (fan-out + LLM aggregator). Unit tests check each spec's shape.
+- Clean live re-run of `backend/scripts/e2e_journey.py` (qwen2.5:3b, real Ollama, scratch DB): **18/18 checks passed**. The chat answered "The result of 1234 * 5678 is 7006652."; the file read paused for approval, was approved and audited, and the continuation answered "The inverter warranty lasts 12 years."; workflow output "1000 | The result is 1000."; history shows 4 runs; analytics 7 tool calls, 2587/124 tokens; timeline persisted.
+- Live supervisor team (`backend/scripts/e2e_team.py`): delegated to `calculator` with the reason "To perform the multiplication 37 * 43", the member returned 1591, and the team output was "The result of 37 * 43 is 1591." (the small model wrote the final sentence itself instead of delegating to the writer).
+- Frontend 173 tests passed; build clean.
 
 ## Known issues
 - Rate limiters are per API process (documented); use an edge limiter for strict global limits.

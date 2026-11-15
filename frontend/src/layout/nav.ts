@@ -35,7 +35,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Build",
     items: [
       { to: "/agents", label: "Agents", icon: Bot, keywords: "builder assistants" },
-      { to: "/workflows", label: "Workflows", icon: GitFork, keywords: "canvas flow graph pipeline drag drop" },
+      { to: "/workflows", label: "Workflows", icon: GitFork, keywords: "canvas flow graph pipeline drag drop teams multi-agent supervisor" },
       { to: "/skills", label: "Skills", icon: BookOpen, keywords: "prompts markdown" },
       { to: "/tools", label: "Tools", icon: Wrench, keywords: "calculator file reader mcp http" },
       { to: "/knowledge", label: "Knowledge", icon: Database, keywords: "rag documents collections memory search" },

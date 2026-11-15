@@ -3,7 +3,8 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 
 import { api, errorMessage } from "../../api/client";
-import { useDeleteWorkflow, useWorkflows, useWorkflowTemplates } from "../../api/queries";
+import { useAgents, useDeleteWorkflow, useWorkflows, useWorkflowTemplates } from "../../api/queries";
+import { TEAM_PATTERNS, teamSpec } from "../../lib/teamTemplates";
 import type { WorkflowSpec } from "../../api/types";
 import { Button } from "../../components/ui/Button";
 import { buttonClasses } from "../../components/ui/buttonStyles";
@@ -29,6 +30,8 @@ export function WorkflowsPage() {
   const canEdit = roleAtLeast(role, "editor");
   const workflows = useWorkflows();
   const templates = useWorkflowTemplates();
+  const agents = useAgents();
+  const [teamIds, setTeamIds] = useState<string[]>([]);
   const remove = useDeleteWorkflow();
   const navigate = useNavigate();
   const toast = useToast();
@@ -99,6 +102,36 @@ export function WorkflowsPage() {
               </button>
             ))}
           </div>
+          <section aria-label="Multi-agent teams" className="mt-5 border-t border-line pt-4">
+            <p className="text-sm font-medium">Multi-agent team</p>
+            <p className="mb-2 text-xs text-muted">Pick the agents, then a pattern. Each team is a normal workflow you can edit and run.</p>
+            {agents.data?.length === 0 && <p className="text-xs text-warning">Create agents first.</p>}
+            <div className="mb-3 flex flex-wrap gap-3">
+              {agents.data?.map((a) => (
+                <label key={a.id} className="flex items-center gap-1.5 text-sm">
+                  <input type="checkbox" checked={teamIds.includes(a.id)} onChange={(e) => setTeamIds(e.target.checked ? [...teamIds, a.id] : teamIds.filter((x) => x !== a.id))} />
+                  {a.name}
+                </label>
+              ))}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {TEAM_PATTERNS.map((p) => {
+                const chosen = (agents.data ?? []).filter((a) => teamIds.includes(a.id));
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    disabled={chosen.length < p.min}
+                    onClick={() => void create(p.name, teamSpec(p.id, chosen), p.description)}
+                    className="rounded-xl border border-line p-4 text-left enabled:hover:border-brand-500 disabled:opacity-50"
+                  >
+                    <span className="block text-sm font-semibold">{p.name}</span>
+                    <span className="block text-xs text-muted">{p.description}{chosen.length < p.min ? ` (pick ${p.min}+ agents)` : ""}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
         </Card>
       )}
       {workflows.isPending ? (
