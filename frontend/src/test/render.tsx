@@ -4,6 +4,7 @@ import type { ReactElement } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { ToastProvider } from "../components/ui/Toast";
+import { TooltipProvider } from "../components/ui/Tooltip";
 import { routes } from "../routes";
 
 /** Render the full app (real routes, fresh query cache) at a given URL. */
@@ -15,7 +16,9 @@ export function renderApp(url: string) {
   const result = render(
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
-        <RouterProvider router={router} />
+        <TooltipProvider>
+          <RouterProvider router={router} />
+        </TooltipProvider>
       </ToastProvider>
     </QueryClientProvider>,
   );

@@ -131,6 +131,7 @@ export const api = {
 
   listTools: () => request<ToolInfo[]>("/tools"),
 
+  listAllConversations: () => request<ConversationSummary[]>("/conversations"),
   listConversations: (agentId: string) =>
     request<ConversationSummary[]>(`/conversations?agent_id=${encodeURIComponent(agentId)}`),
   getConversation: (id: string) => request<Conversation>(`/conversations/${id}`),

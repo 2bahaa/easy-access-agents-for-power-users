@@ -4,6 +4,7 @@ import { AgentEditorPage } from "./features/agents/AgentEditorPage";
 import { AgentsPage } from "./features/agents/AgentsPage";
 import { ChatPage } from "./features/chat/ChatPage";
 import { NotFoundPage } from "./features/NotFoundPage";
+import { OverviewPage } from "./features/overview/OverviewPage";
 import { SkillsPage } from "./features/skills/SkillsPage";
 import { ToolsPage } from "./features/tools/ToolsPage";
 import { AppLayout } from "./layout/AppLayout";
@@ -12,7 +13,8 @@ export const routes: RouteObject[] = [
   {
     element: <AppLayout />,
     children: [
-      { index: true, element: <Navigate to="/agents" replace /> },
+      { index: true, element: <Navigate to="/overview" replace /> },
+      { path: "overview", element: <OverviewPage /> },
       { path: "agents", element: <AgentsPage /> },
       { path: "agents/new", element: <AgentEditorPage /> },
       { path: "agents/:agentId", element: <AgentEditorPage /> },

@@ -12,6 +12,7 @@ export const keys = {
   tools: ["tools"] as const,
   providers: ["providers"] as const,
   models: (provider: string) => ["providers", provider, "models"] as const,
+  allConversations: ["conversations", "all"] as const,
   conversations: (agentId: string) => ["conversations", { agentId }] as const,
   conversation: (id: string) => ["conversation", id] as const,
   runEvents: (runId: string) => ["runs", runId, "events"] as const,
@@ -89,6 +90,10 @@ export function useDeleteSkill() {
     },
   });
 }
+
+/** Most recent conversations across all agents (Overview, command palette). */
+export const useAllConversations = () =>
+  useQuery({ queryKey: keys.allConversations, queryFn: api.listAllConversations });
 
 export const useConversations = (agentId: string | undefined) =>
   useQuery({

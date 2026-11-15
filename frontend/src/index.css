@@ -1,8 +1,11 @@
 @import "tailwindcss";
 
+/* Theme is class-driven (html.dark), set by lib/theme.ts: "system" follows the OS. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /*
-  Design tokens. Semantic colors (canvas, surface, line, fg, muted) switch automatically
-  with the OS color scheme, so components never need separate dark: classes for them.
+  Design tokens. Semantic colors (canvas, surface, line, fg, muted, status) switch with the
+  theme, so components never need separate dark: classes for them.
 */
 @theme {
   --font-sans: "Inter", "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
@@ -25,6 +28,14 @@
   --color-brand-700: #4338ca;
   --color-accent-500: #a855f7;
 
+  /* Status tokens: use these instead of raw emerald/amber/red. */
+  --color-success: #059669;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
+  --color-info: #2563eb;
+
+  --radius-card: 1rem;
+
   --shadow-card: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.06);
   --shadow-pop: 0 12px 32px -8px rgb(16 24 40 / 0.18), 0 4px 8px -4px rgb(16 24 40 / 0.08);
 
@@ -41,26 +52,31 @@
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-canvas: #0b0d14;
-    --color-surface: #131622;
-    --color-surface-2: #1a1e2d;
-    --color-line: #262b3d;
-    --color-line-strong: #343a50;
-    --color-fg: #e8eaf2;
-    --color-muted: #a1a7bd;
-    --color-subtle: #6f768f;
-    --color-brand-50: #1b1d3a;
-    --color-brand-100: #252857;
-    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4);
-    --shadow-pop: 0 16px 40px -8px rgb(0 0 0 / 0.6);
-  }
+html.dark {
+  --color-canvas: #0b0d14;
+  --color-surface: #131622;
+  --color-surface-2: #1a1e2d;
+  --color-line: #262b3d;
+  --color-line-strong: #343a50;
+  --color-fg: #e8eaf2;
+  --color-muted: #a1a7bd;
+  --color-subtle: #6f768f;
+  --color-brand-50: #1b1d3a;
+  --color-brand-100: #252857;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-pop: 0 16px 40px -8px rgb(0 0 0 / 0.6);
+  --color-success: #34d399;
+  --color-warning: #fbbf24;
+  --color-danger: #f87171;
+  --color-info: #60a5fa;
 }
 
 @layer base {
   html {
-    color-scheme: light dark;
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
   }
   body {
     @apply bg-canvas font-sans text-fg antialiased;

@@ -7,9 +7,9 @@ type Tone = "neutral" | "brand" | "success" | "warning" | "danger" | "violet";
 const TONES: Record<Tone, string> = {
   neutral: "bg-surface-2 text-muted ring-line",
   brand: "bg-brand-500/10 text-brand-600 ring-brand-500/20 dark:text-brand-400",
-  success: "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:text-emerald-400",
-  warning: "bg-amber-500/10 text-amber-700 ring-amber-500/25 dark:text-amber-400",
-  danger: "bg-red-500/10 text-red-700 ring-red-500/20 dark:text-red-400",
+  success: "bg-success/10 text-success ring-success/20",
+  warning: "bg-warning/10 text-warning ring-warning/25",
+  danger: "bg-danger/10 text-danger ring-danger/20",
   violet: "bg-accent-500/10 text-purple-700 ring-accent-500/20 dark:text-purple-300",
 };
 

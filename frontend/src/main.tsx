@@ -7,6 +7,8 @@ import { RouterProvider } from "react-router";
 
 import { ApiError } from "./api/client";
 import { ToastProvider } from "./components/ui/Toast";
+import { TooltipProvider } from "./components/ui/Tooltip";
+import { applyTheme } from "./lib/theme";
 import { createRouter } from "./routes";
 
 const queryClient = new QueryClient({
@@ -20,13 +22,16 @@ const queryClient = new QueryClient({
   },
 });
 
+applyTheme();
 const router = createRouter();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
-        <RouterProvider router={router} />
+        <TooltipProvider>
+          <RouterProvider router={router} />
+        </TooltipProvider>
       </ToastProvider>
     </QueryClientProvider>
   </StrictMode>,
