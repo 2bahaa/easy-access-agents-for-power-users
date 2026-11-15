@@ -17,6 +17,8 @@ import type {
   SkillSummary,
   SkillWrite,
   ToolInfo,
+  ProbeResult,
+  ProviderConnectionWrite,
   ApiKey,
   ApiKeyCreated,
   AuditEntry,
@@ -192,4 +194,19 @@ export const api = {
   listAudit: (before?: number) => request<AuditEntry[]>(`/audit?limit=100${before ? `&before=${before}` : ""}`),
   listModels: (provider: string) =>
     request<ModelInfo[]>(`/providers/${encodeURIComponent(provider)}/models`),
+  createProvider: (data: ProviderConnectionWrite) => request<ProviderInfo>("/providers", json("POST", data)),
+  updateProvider: (id: string, data: ProviderConnectionWrite) =>
+    request<ProviderInfo>(`/providers/${id}`, json("PATCH", data)),
+  deleteProvider: (id: string) => request<void>(`/providers/${id}`, { method: "DELETE" }),
+  testProvider: (name: string) => request<ProviderInfo>(`/providers/${encodeURIComponent(name)}/test`, { method: "POST" }),
+  setModelTools: (provider: string, model: string, supportsTools: boolean | null) =>
+    request<void>(
+      `/providers/${encodeURIComponent(provider)}/models/${encodeURIComponent(model)}/capabilities`,
+      json("PUT", { supports_tools: supportsTools }),
+    ),
+  probeModel: (provider: string, model: string) =>
+    request<ProbeResult>(
+      `/providers/${encodeURIComponent(provider)}/models/${encodeURIComponent(model)}/probe`,
+      { method: "POST" },
+    ),
 };

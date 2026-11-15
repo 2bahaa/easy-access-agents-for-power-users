@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     login_attempts_per_5min: int = Field(default=10, ge=1)
     registrations_per_hour: int = Field(default=20, ge=1)
 
+    # Fernet key(s) for encrypting stored credentials (comma-separated; first encrypts).
+    # Without it, provider connections that need an API key cannot be created.
+    secret_encryption_key: SecretStr = SecretStr("")
+    # Hosts that provider connections may NOT target (SSRF guard), in addition to
+    # link-local/metadata addresses which are always blocked.
+    provider_blocked_hosts: str = ""
+
     # Comma-separated list of allowed browser origins.
     cors_origins: str = "http://localhost:5173"
 

@@ -4,7 +4,7 @@ from fastapi import APIRouter, status
 
 from app.api.deps import (
     PrincipalDep,
-    ProviderRegistryDep,
+    ProviderResolverDep,
     SessionDep,
     SettingsDep,
     ToolRegistryDep,
@@ -28,11 +28,9 @@ async def create_agent(
     session: SessionDep,
     settings: SettingsDep,
     registry: ToolRegistryDep,
-    providers: ProviderRegistryDep,
+    resolver: ProviderResolverDep,
 ) -> AgentRead:
-    agent = await agent_service.create_agent(
-        session, principal, data, settings, registry, providers
-    )
+    agent = await agent_service.create_agent(session, principal, data, settings, registry, resolver)
     return agent_service.to_read(agent)
 
 
@@ -50,10 +48,10 @@ async def update_agent(
     session: SessionDep,
     settings: SettingsDep,
     registry: ToolRegistryDep,
-    providers: ProviderRegistryDep,
+    resolver: ProviderResolverDep,
 ) -> AgentRead:
     agent = await agent_service.update_agent(
-        session, principal, agent_id, data, settings, registry, providers
+        session, principal, agent_id, data, settings, registry, resolver
     )
     return agent_service.to_read(agent)
 

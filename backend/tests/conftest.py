@@ -13,6 +13,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 
 import pytest
 from alembic.config import Config
+from cryptography.fernet import Fernet
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import make_url, text
@@ -23,6 +24,7 @@ from alembic import command
 from app.config import BACKEND_DIR, Settings, get_settings
 from app.db.models import Base, Organization, Workspace
 from app.main import create_app
+from app.runtime.providers.cloud import ProviderSpec
 from app.runtime.providers.registry import ProviderRegistry
 from app.services.principal import Principal
 from tests.fakes import FakeProvider
@@ -72,6 +74,7 @@ def settings(database_url: str, tmp_path_factory: pytest.TempPathFactory) -> Set
         run_poll_interval_s=0.2,
         run_stale_after_s=2.0,
         jwt_secret="test-secret-not-for-production-0123456789",
+        secret_encryption_key=Fernet.generate_key().decode(),
     )
 
 
@@ -130,12 +133,27 @@ def fake_provider() -> FakeProvider:
 
 
 @pytest.fixture
+def cloud_provider() -> FakeProvider:
+    """What every provider *connection* resolves to in tests (no network)."""
+    return FakeProvider(unknown_tool_models={"cloud-model"})
+
+
+@pytest.fixture
 async def app(
-    settings: Settings, clean_db: None, fake_provider: FakeProvider
+    settings: Settings, clean_db: None, fake_provider: FakeProvider, cloud_provider: FakeProvider
 ) -> AsyncIterator[FastAPI]:
     """The real app (lifespan included: engine, embedded run worker) on the test database,
-    with the fake provider."""
-    application = create_app(settings, provider_registry=ProviderRegistry([fake_provider]))
+    with the fake built-in provider and a fake factory for provider connections."""
+
+    def factory(spec: ProviderSpec, name: str) -> FakeProvider:
+        cloud_provider.specs.append(spec)
+        return cloud_provider
+
+    application = create_app(
+        settings,
+        provider_registry=ProviderRegistry([fake_provider]),
+        provider_factory=factory,  # type: ignore[arg-type]
+    )
     async with application.router.lifespan_context(application):
         await asyncio.wait_for(application.state.run_worker.ready.wait(), timeout=10)
         yield application

@@ -6,8 +6,9 @@ from tests.fakes import FakeProvider
 
 
 async def test_list_providers(client: AsyncClient) -> None:
-    resp = await client.get("/api/providers")
-    assert resp.json() == [{"name": "ollama", "available": True}]
+    (builtin,) = (await client.get("/api/providers")).json()
+    assert (builtin["name"], builtin["available"], builtin["builtin"]) == ("ollama", True, True)
+    assert builtin["kind"] == "ollama" and builtin["has_secret"] is False
 
 
 async def test_list_models(client: AsyncClient) -> None:
@@ -25,7 +26,8 @@ async def test_unknown_provider_404(client: AsyncClient) -> None:
 
 async def test_provider_unavailable_502(client: AsyncClient, fake_provider: FakeProvider) -> None:
     fake_provider.available = False
-    assert (await client.get("/api/providers")).json() == [{"name": "ollama", "available": False}]
+    (builtin,) = (await client.get("/api/providers")).json()
+    assert (builtin["name"], builtin["available"], builtin["status"]) == ("ollama", False, "error")
     resp = await client.get("/api/providers/ollama/models")
     assert resp.status_code == 502
     assert resp.json()["detail"] == "Ollama is not reachable"

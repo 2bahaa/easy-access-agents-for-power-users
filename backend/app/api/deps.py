@@ -8,6 +8,7 @@ from app.config import Settings
 from app.runtime.providers.registry import ProviderRegistry
 from app.services.auth_service import resolve_principal
 from app.services.principal import Principal
+from app.services.provider_service import ProviderResolver
 from app.services.run_service import SessionFactory
 from app.tools.registry import ToolRegistry
 
@@ -33,6 +34,11 @@ def get_provider_registry(request: Request) -> ProviderRegistry:
     return registry
 
 
+def get_provider_resolver(request: Request) -> ProviderResolver:
+    resolver: ProviderResolver = request.app.state.provider_resolver
+    return resolver
+
+
 def get_session_factory(request: Request) -> SessionFactory:
     """For work that outlives the request handler (streaming responses)."""
     factory: SessionFactory = request.app.state.sessionmaker
@@ -44,6 +50,7 @@ SettingsDep = Annotated[Settings, Depends(get_app_settings)]
 ToolRegistryDep = Annotated[ToolRegistry, Depends(get_tool_registry)]
 ProviderRegistryDep = Annotated[ProviderRegistry, Depends(get_provider_registry)]
 SessionFactoryDep = Annotated[SessionFactory, Depends(get_session_factory)]
+ProviderResolverDep = Annotated[ProviderResolver, Depends(get_provider_resolver)]
 
 
 def _bearer(authorization: str | None) -> str | None:

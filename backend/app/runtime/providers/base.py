@@ -17,16 +17,22 @@ class ModelNotFoundError(ProviderError):
 
 @dataclass(frozen=True)
 class ModelCapabilities:
-    supports_tools: bool
-    supports_thinking: bool
+    """Capabilities as reported by the provider. None = the provider does not say; it is
+    never guessed from the model name (see services/provider_service.py for overrides and
+    the live tool-calling probe)."""
+
+    supports_tools: bool | None
+    supports_thinking: bool | None
 
 
 @dataclass(frozen=True)
 class ModelInfo:
     name: str
     size: int | None
-    supports_tools: bool
-    supports_thinking: bool
+    supports_tools: bool | None
+    supports_thinking: bool | None
+    context_window: int | None = None
+    display_name: str | None = None
 
 
 class Provider(Protocol):

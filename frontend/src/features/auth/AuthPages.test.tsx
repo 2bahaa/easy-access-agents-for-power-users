@@ -30,7 +30,7 @@ describe("auth pages", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/login"));
     expect(router.state.location.search).toBe("?next=%2Fskills");
 
-    await userEvent.type(screen.getByLabelText("Email"), "ada@example.com");
+    await userEvent.type(await screen.findByLabelText("Email"), "ada@example.com");
     await userEvent.type(screen.getByLabelText("Password"), "correct horse battery");
     await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
 

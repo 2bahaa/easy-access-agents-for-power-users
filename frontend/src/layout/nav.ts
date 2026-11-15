@@ -1,4 +1,4 @@
-import { BookOpen, Bot, Building2, LayoutDashboard, Wrench, type LucideIcon } from "lucide-react";
+import { BookOpen, Bot, Building2, LayoutDashboard, Plug, Wrench, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   to: string;
@@ -30,6 +30,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Admin",
     items: [
+      { to: "/providers", label: "Providers", icon: Plug, keywords: "models llm openai anthropic gemini api keys connections" },
       { to: "/settings", label: "Organization", icon: Building2, keywords: "settings members api keys audit workspaces" },
     ],
   },

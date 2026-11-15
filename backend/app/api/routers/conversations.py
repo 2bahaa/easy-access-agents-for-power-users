@@ -5,7 +5,7 @@ from fastapi.responses import StreamingResponse
 
 from app.api.deps import (
     PrincipalDep,
-    ProviderRegistryDep,
+    ProviderResolverDep,
     SessionDep,
     SessionFactoryDep,
     SettingsDep,
@@ -75,14 +75,14 @@ async def post_message(
     session: SessionDep,
     session_factory: SessionFactoryDep,
     settings: SettingsDep,
-    providers: ProviderRegistryDep,
+    resolver: ProviderResolverDep,
 ) -> StreamingResponse:
     """Persist the user message, queue a run and stream its events (SSE).
     Errors before the run is queued are normal HTTP errors; later ones arrive as run.failed.
     The run is durable: if the client disconnects it keeps running; reattach with
     GET /runs/{id}/stream (Last-Event-ID supported)."""
     run = await run_service.start_run(
-        session, principal, conversation_id, data.content, providers=providers
+        session, principal, conversation_id, data.content, resolver=resolver
     )
     return StreamingResponse(
         follow_run_sse(session_factory, settings.listen_dsn, run.id),

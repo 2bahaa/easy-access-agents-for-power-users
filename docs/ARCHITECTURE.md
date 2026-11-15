@@ -58,7 +58,9 @@ Verified versions (Phase 0): Python 3.12, LangGraph 1.2.22, langchain-core 1.8, 
 | `services/pubsub.py`, `run_stream.py` | `LISTEN/NOTIFY` helpers; `follow_run` = replay persisted events, then live notifications (dedup by `seq`) |
 | `worker/` | `RunWorker`: claims queued runs, executes `AgentRun`s, writes events in batches, heartbeats, honours cancel flags. Embedded in the API (`RUN_WORKER_EMBEDDED=true`) or standalone (`python -m app.worker`) |
 | `db/` | SQLAlchemy models and async engine/session factory. Services query via the session directly; a repository layer is added only if query logic starts to repeat |
-| `runtime/providers/` | `Provider` protocol (list models, capabilities, build chat model, classify provider errors), registry, Ollama implementation |
+| `runtime/providers/` | `Provider` protocol (list models, capabilities, build chat model, classify provider errors), registry + `build_provider(spec)`, Ollama, and `cloud.py` adapters: OpenAI / OpenAI-compatible (ChatOpenAI), Anthropic (ChatAnthropic), Gemini (ChatGoogleGenerativeAI). Discovery uses each provider's REST listing over httpx; capabilities are tri-state (`None` = not stated, never guessed) |
+| `crypto.py` | `SecretBox`: Fernet/MultiFernet encryption of stored credentials (key rotation) |
+| `services/provider_service.py` | Connections CRUD (admin, audited, SSRF-guarded base URLs), `ProviderResolver` (workspace-scoped connection → provider with decrypted key in memory + capability overrides), health checks, model listing, tool-support overrides and the live probe |
 | `runtime/graph.py`, `state.py` | LangGraph `StateGraph` definition and state |
 | `runtime/tool_node.py` | Authorize → limit-check → validate → execute with timeout → emit events |
 | `runtime/events.py` | `AgentEvent` discriminated union |

@@ -22,8 +22,10 @@ from app.api.routers import (
     tools,
 )
 from app.config import Settings, get_settings
+from app.crypto import SecretBox
 from app.db.session import create_engine, create_sessionmaker
 from app.runtime.providers.registry import ProviderRegistry, build_default_providers
+from app.services.provider_service import ProviderFactory, ProviderResolver
 from app.services.skill_service import seed_builtin_skills
 from app.tools.registry import ToolRegistry, build_default_registry
 from app.worker.run_worker import RunWorker
@@ -36,6 +38,7 @@ def create_app(
     *,
     provider_registry: ProviderRegistry | None = None,
     tool_registry: ToolRegistry | None = None,
+    provider_factory: ProviderFactory | None = None,
 ) -> FastAPI:
     """Build the app. Registries can be injected (tests use a fake provider)."""
     settings = settings or get_settings()
@@ -55,7 +58,7 @@ def create_app(
             worker = RunWorker(
                 settings,
                 app.state.sessionmaker,
-                app.state.provider_registry,
+                app.state.provider_resolver,
                 app.state.tool_registry,
             )
             worker.start()
@@ -70,6 +73,11 @@ def create_app(
     app.state.tool_registry = tool_registry or build_default_registry()
     app.state.provider_registry = provider_registry or build_default_providers(
         settings.ollama_base_url
+    )
+    app.state.provider_resolver = ProviderResolver(
+        app.state.provider_registry,
+        SecretBox(settings.secret_encryption_key.get_secret_value()),
+        **({"factory": provider_factory} if provider_factory else {}),
     )
     app.state.run_worker = None
     app.state.login_limiter = SlidingWindowLimiter(settings.login_attempts_per_5min, 300)

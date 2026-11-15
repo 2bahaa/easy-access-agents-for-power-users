@@ -23,7 +23,6 @@ from app.db.models import (
     Workspace,
 )
 from app.runtime.executor import AgentRun
-from app.runtime.providers.registry import ProviderRegistry, UnknownProviderError
 from app.runtime.types import (
     AgentConfig,
     RunRequest,
@@ -33,8 +32,9 @@ from app.runtime.types import (
     ToolGrant,
 )
 from app.services import agent_service, audit_service, conversation_service, run_queue
-from app.services.errors import ConflictError, DomainValidationError, NotFoundError
+from app.services.errors import ConflictError, NotFoundError
 from app.services.principal import Principal
+from app.services.provider_service import ProviderResolver
 from app.tools.base import ToolContext
 from app.tools.registry import ToolRegistry
 
@@ -54,6 +54,7 @@ def to_agent_config(agent: Agent) -> AgentConfig:
         agent_id=agent.id,
         name=agent.name,
         provider=agent.provider,
+        connection_id=agent.connection_id,
         model=agent.model,
         model_params=agent.model_params,
         system_prompt=agent.system_prompt,
@@ -175,7 +176,7 @@ async def start_run(
     conversation_id: uuid.UUID,
     content: str,
     *,
-    providers: ProviderRegistry,
+    resolver: ProviderResolver,
 ) -> Run:
     """Validate, persist the user message + a queued run, and wake a worker.
     Raises domain errors (403/404/409/422) before anything streams."""
@@ -187,10 +188,7 @@ async def start_run(
 
     agent = await agent_service.get_agent(session, conversation.agent_id, ws)
     config = to_agent_config(agent)
-    try:
-        providers.get(config.provider)
-    except UnknownProviderError:
-        raise DomainValidationError(f"Unknown provider: '{config.provider}'") from None
+    await resolver.resolve(session, ws, config.provider, config.connection_id)  # 404/422 early
 
     user_message = Message(
         conversation_id=conversation_id,
@@ -225,12 +223,14 @@ async def prepare_agent_run(
     run: Run,
     *,
     settings: Settings,
-    providers: ProviderRegistry,
+    resolver: ProviderResolver,
     tools: ToolRegistry,
 ) -> AgentRun:
     """Rebuild a claimed run's runtime inputs from the database (worker side)."""
     config = AgentConfig.model_validate(run.agent_snapshot)
-    provider = providers.get(config.provider)
+    provider = await resolver.resolve(
+        session, run.workspace_id, config.provider, config.connection_id
+    )
     workspace = await session.get(Workspace, run.workspace_id)
     if workspace is None:
         raise NotFoundError(f"Workspace of run {run.id} not found")

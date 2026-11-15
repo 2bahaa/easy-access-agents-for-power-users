@@ -17,14 +17,16 @@ from app.runtime.providers.base import (
 
 
 class OllamaProvider:
-    name = "ollama"
+    kind = "ollama"
 
     def __init__(
         self,
         base_url: str,
+        name: str = "ollama",
         timeout_s: float = 5.0,
         transport: httpx.AsyncBaseTransport | None = None,  # injectable for tests
     ) -> None:
+        self.name = name
         self.base_url = base_url.rstrip("/")
         self.timeout_s = timeout_s
         self._transport = transport
@@ -83,6 +85,8 @@ class OllamaProvider:
             model=model,
             base_url=self.base_url,
             temperature=params.get("temperature"),
+            top_p=params.get("top_p"),
+            num_predict=params.get("max_tokens"),
             num_ctx=params.get("num_ctx"),
             # True -> thinking goes to additional_kwargs["reasoning_content"];
             # None -> model default.

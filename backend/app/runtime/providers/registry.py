@@ -1,4 +1,7 @@
+import httpx
+
 from app.runtime.providers.base import Provider
+from app.runtime.providers.cloud import ProviderSpec, build_cloud_provider
 from app.runtime.providers.ollama import OllamaProvider
 
 
@@ -25,3 +28,14 @@ class ProviderRegistry:
 
 def build_default_providers(ollama_base_url: str) -> ProviderRegistry:
     return ProviderRegistry([OllamaProvider(ollama_base_url)])
+
+
+def build_provider(
+    spec: ProviderSpec, name: str, transport: httpx.AsyncBaseTransport | None = None
+) -> Provider:
+    """Build a provider for a stored connection (any kind, including remote Ollama)."""
+    if spec.kind == "ollama":
+        if not spec.base_url:
+            raise ValueError("An Ollama connection needs a base URL")
+        return OllamaProvider(spec.base_url, name=name, transport=transport)
+    return build_cloud_provider(spec, name, transport=transport)

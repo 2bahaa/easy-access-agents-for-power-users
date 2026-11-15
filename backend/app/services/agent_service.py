@@ -11,12 +11,12 @@ from sqlalchemy.orm import raiseload
 from app.config import Settings
 from app.db.models import Agent, AgentSkill, AgentTool, Skill
 from app.runtime.providers.base import ProviderError
-from app.runtime.providers.registry import ProviderRegistry, UnknownProviderError
 from app.schemas.agents import AgentRead, AgentWrite, ModelParams, ToolSelection
 from app.schemas.skills import SkillRef
-from app.services import audit_service
+from app.services import audit_service, provider_service
 from app.services.errors import ConflictError, DomainValidationError, NotFoundError
 from app.services.principal import Principal
+from app.services.provider_service import ProviderResolver
 from app.tools.registry import ToolConfigError, ToolRegistry, UnknownToolError
 
 
@@ -26,6 +26,7 @@ def to_read(agent: Agent) -> AgentRead:
         name=agent.name,
         description=agent.description,
         provider=agent.provider,
+        connection_id=agent.connection_id,
         model=agent.model,
         model_params=ModelParams.model_validate(agent.model_params),
         system_prompt=agent.system_prompt,
@@ -93,35 +94,54 @@ def _validate_tools(data: AgentWrite, registry: ToolRegistry) -> dict[str, dict[
     return configs
 
 
-async def _check_provider_and_model(data: AgentWrite, providers: ProviderRegistry) -> None:
-    try:
-        provider = providers.get(data.provider)
-    except UnknownProviderError:
-        raise DomainValidationError(f"Unknown provider: '{data.provider}'") from None
+async def _check_provider_and_model(
+    session: AsyncSession, principal: Principal, data: AgentWrite, resolver: ProviderResolver
+) -> str:
+    """Resolve the agent's provider (workspace-scoped) and return its kind."""
+    kind = data.provider
+    if data.connection_id is not None:
+        try:
+            conn = await provider_service.get_connection(
+                session, principal.workspace_id, data.connection_id
+            )
+        except NotFoundError:
+            raise DomainValidationError(
+                f"Unknown provider connection: {data.connection_id}"
+            ) from None
+        kind = conn.kind
+    provider = await resolver.resolve(
+        session, principal.workspace_id, data.provider, data.connection_id
+    )
+    provider_service.validate_params_for_kind(kind, data.model_params.model_dump())
     if not data.tools:
-        return
+        return kind
     try:
         caps = await provider.get_capabilities(data.model)
     except ProviderError:
         # Provider offline or model not pulled yet: allow saving; the run pre-flight
         # check enforces tool support before any execution.
-        return
+        return kind
+    if caps.supports_tools is None:
+        return kind  # unknown: saving allowed; the run pre-flight refuses until confirmed
     if not caps.supports_tools:
         raise ConflictError(
             f"Model '{data.model}' does not support tool calling; remove the tools "
             "or choose a tool-capable model"
         )
+    return kind
 
 
 def _apply(
     agent: Agent,
     data: AgentWrite,
+    kind: str,
     skills: dict[uuid.UUID, Skill],
     tool_configs: dict[str, dict[str, Any]],
 ) -> None:
     agent.name = data.name
     agent.description = data.description
-    agent.provider = data.provider
+    agent.provider = kind if data.connection_id is not None else data.provider
+    agent.connection_id = data.connection_id
     agent.model = data.model
     agent.model_params = data.model_params.model_dump(exclude_none=True)
     agent.system_prompt = data.system_prompt
@@ -153,15 +173,15 @@ async def create_agent(
     data: AgentWrite,
     settings: Settings,
     registry: ToolRegistry,
-    providers: ProviderRegistry,
+    resolver: ProviderResolver,
 ) -> Agent:
     principal.require("editor")
     _check_limits(data, settings)
     tool_configs = _validate_tools(data, registry)
-    await _check_provider_and_model(data, providers)
+    kind = await _check_provider_and_model(session, principal, data, resolver)
     skills = await _resolve_skills(session, data.skill_ids, principal.workspace_id)
     agent = Agent(workspace_id=principal.workspace_id, skill_links=[], tool_links=[])
-    _apply(agent, data, skills, tool_configs)
+    _apply(agent, data, kind, skills, tool_configs)
     session.add(agent)
     await session.commit()
     return await get_agent(session, agent.id, principal.workspace_id)
@@ -174,15 +194,15 @@ async def update_agent(
     data: AgentWrite,
     settings: Settings,
     registry: ToolRegistry,
-    providers: ProviderRegistry,
+    resolver: ProviderResolver,
 ) -> Agent:
     principal.require("editor")
     agent = await get_agent(session, agent_id, principal.workspace_id)
     _check_limits(data, settings)
     tool_configs = _validate_tools(data, registry)
-    await _check_provider_and_model(data, providers)
+    kind = await _check_provider_and_model(session, principal, data, resolver)
     skills = await _resolve_skills(session, data.skill_ids, principal.workspace_id)
-    _apply(agent, data, skills, tool_configs)
+    _apply(agent, data, kind, skills, tool_configs)
     agent.updated_at = func.now()
     await session.commit()
     return await get_agent(session, agent_id, principal.workspace_id)

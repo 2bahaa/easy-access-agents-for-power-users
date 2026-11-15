@@ -7,8 +7,8 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 | 0 | Scope, docs, CI | done | 620c3ab |
 | 1 | Design system & app shell | done | 593469d |
 | 2a | Durable runtime (queue, worker, resume) | done | 720b452 |
-| 2b | Auth, users, workspaces, tenancy, audit | done | (this commit) |
-| 3 | Multi-provider | pending | – |
+| 2b | Auth, users, workspaces, tenancy, audit | done | 84dc4f8 |
+| 3 | Multi-provider | done | (this commit) |
 | 4 | Agent platform (versions, templates) & skills v2 | pending | – |
 | 5 | Tools & MCP | pending | – |
 | 6 | Human approval | pending | – |
@@ -59,6 +59,16 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 - New deps (justified): `argon2-cffi` (password hashing, OWASP-recommended), `pyjwt` (JWT encode/verify).
 - Tests: backend 191 passed / 2 skipped (+18 auth/tenancy/RBAC/API-key/audit tests incl. cross-tenant negatives for every resource and file sandbox isolation); frontend 22 files / 120 passed (+13). ruff, format, mypy, typecheck, lint, build clean.
 - Docker: migration 0003 applied to the existing dev DB with data preserved (1 agent, 4 conversations in Default); unauthenticated `/api/agents` → 401; `/api/health` public.
+
+### Phase 3 — Multi-provider
+- Adapters: OpenAI, Anthropic, Gemini, OpenAI-compatible (HF router, vLLM, LM Studio, Ollama /v1) and remote Ollama, behind the existing `Provider` protocol; built-in Ollama unchanged (agents keep `provider="ollama"`, `connection_id=null`).
+- Workspace provider connections (migration `0004`): Fernet-encrypted API keys (`SECRET_ENCRYPTION_KEY`, rotation via MultiFernet), write-only in the API (hint only), admin-only management, audited, SSRF guard on base URLs, health checks with recorded status, delete blocked while agents use a connection.
+- Capabilities are tri-state and never hardcoded: provider-stated values win; otherwise a live tool-calling probe or a user override decides; runs refuse tools on "unknown". Portable params `temperature/top_p/max_tokens`; Ollama-only `num_ctx/think` rejected for other kinds.
+- Studio: Providers page (add/test/delete, models with tool-support state, live check, override) and provider selection in the Agent Builder (Ollama-only fields hidden for other providers).
+- New deps (justified): `langchain-openai`, `langchain-anthropic`, `langchain-google-genai` (maintained LangChain integrations for the requested providers), `cryptography` (credential encryption). `langchain-core` stays 1.8.0.
+- Tests: backend 227 passed / 2 skipped (+36: adapter contract tests with recorded responses for all providers, crypto/rotation, SSRF guard, connection isolation/RBAC/secrets, overrides, probe, unknown-capability refusal); frontend 23 files / 128 passed (+8). ruff, format, mypy, typecheck, lint, build clean.
+- Live check (manual): the real OpenAI-compatible adapter against local Ollama `/v1` — discovery (tool support reported as unknown, correctly), streaming with token usage, and a real `ping` tool call (`llama3.2:1b`).
+- Not verifiable here: live calls to OpenAI/Anthropic/Gemini (no API keys on this machine) — covered by recorded-response contract tests; manual check with real keys recommended.
 
 ## Known issues
 - Frontend bundle is 574 kB (minified); route-level code splitting planned with the workflow editor (Phase 8).

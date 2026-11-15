@@ -100,13 +100,18 @@ export function ModelPicker({
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-mono text-[13px] font-medium">{m.name}</span>
                 <span className="mt-1 flex flex-wrap items-center gap-1">
-                  {m.supports_tools ? (
+                  {m.supports_tools === true ? (
                     <Badge tone="success" icon={<Wrench />}>
                       Tools
                     </Badge>
-                  ) : (
+                  ) : m.supports_tools === false ? (
                     <Badge tone="neutral">No tools</Badge>
+                  ) : (
+                    <Badge tone="warning">Tools: unknown</Badge>
                   )}
+                  {m.context_window ? (
+                    <span className="text-[11px] text-subtle">{Math.round(m.context_window / 1000)}k ctx</span>
+                  ) : null}
                   {m.supports_thinking && (
                     <Badge tone="violet" icon={<Brain />}>
                       Thinking

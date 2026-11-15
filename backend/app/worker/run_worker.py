@@ -26,8 +26,8 @@ from app.config import Settings
 from app.db.models import Run
 from app.runtime.events import TERMINAL_TYPES, AgentEvent
 from app.runtime.executor import AgentRun
-from app.runtime.providers.registry import ProviderRegistry
 from app.services import run_queue, run_service
+from app.services.provider_service import ProviderResolver
 from app.services.pubsub import RUNS_CHANNEL, listen
 from app.tools.registry import ToolRegistry
 
@@ -41,13 +41,13 @@ class RunWorker:
         self,
         settings: Settings,
         session_factory: SessionFactory,
-        providers: ProviderRegistry,
+        resolver: ProviderResolver,
         tools: ToolRegistry,
         worker_id: str | None = None,
     ) -> None:
         self.settings = settings
         self.session_factory = session_factory
-        self.providers = providers
+        self.resolver = resolver
         self.tools = tools
         self.worker_id = worker_id or f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:6]}"
         self._active: dict[uuid.UUID, AgentRun] = {}
@@ -177,7 +177,7 @@ class RunWorker:
                     session,
                     run,
                     settings=self.settings,
-                    providers=self.providers,
+                    resolver=self.resolver,
                     tools=self.tools,
                 )
                 cancel_requested = run.cancel_requested

@@ -8,6 +8,7 @@ describe("agent form mapping", () => {
       name: "Research Assistant",
       description: "Reads my notes",
       provider: "ollama",
+      connection_id: null, // built-in Ollama
       model: "qwen3:4b",
       model_params: { temperature: 0.3, num_ctx: 8192 }, // null think is omitted
       system_prompt: "Be careful.",
@@ -16,6 +17,29 @@ describe("agent form mapping", () => {
       max_tool_calls: 6,
       run_timeout_s: 90,
     });
+  });
+
+  it("never sends Ollama-only parameters to other providers", () => {
+    const write = toAgentWrite({
+      ...fromAgent(agent),
+      provider: "openai",
+      connectionId: "conn-1",
+      maxTokens: 512,
+    });
+    expect(write.connection_id).toBe("conn-1");
+    expect(write.model_params).toEqual({ temperature: 0.3, max_tokens: 512 });
+  });
+
+  it("validates max output tokens", () => {
+    const values = { ...fromAgent(agent), maxTokens: 0 };
+    expect(validateAgentForm(values).maxTokens).toMatch(/whole number/);
+    expect(validateAgentForm({ ...values, maxTokens: 1024 }).maxTokens).toBeUndefined();
+  });
+
+  it("only blocks tools when the model is known not to support them", () => {
+    const values = { ...fromAgent(agent), tools: [{ name: "calculator", config: {} }] };
+    expect(validateAgentForm(values, { modelSupportsTools: false }).tools).toBeDefined();
+    expect(validateAgentForm(values, { modelSupportsTools: null }).tools).toBeUndefined();
   });
 
   it("omits model params left at the model default and trims text", () => {

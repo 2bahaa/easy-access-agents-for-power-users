@@ -45,6 +45,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:-}
       ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # Fernet key(s) encrypting stored provider API keys (required to add hosted providers).
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-}
     volumes:
       # Read-only: the file_reader tool can never modify host files.
       - ./workspace:/workspace:ro

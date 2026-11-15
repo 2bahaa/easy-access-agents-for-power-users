@@ -161,6 +161,14 @@ class AgentRun:
                 caps = await self.provider.get_capabilities(cfg.model)
             except ProviderError as e:
                 raise _RunFailure("failed", "provider_error", str(e)) from e
+            if caps.supports_tools is None:
+                raise _RunFailure(
+                    "failed",
+                    "model_no_tool_support",
+                    f"The provider does not report whether model '{cfg.model}' supports tool "
+                    "calling. Run the tool-calling check (or mark the model) in Providers, "
+                    "or remove the agent's tools.",
+                )
             if not caps.supports_tools:
                 raise _RunFailure(
                     "failed",

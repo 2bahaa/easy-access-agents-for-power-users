@@ -40,7 +40,7 @@ export function modelAdjustments(
       label: "Thinking: On",
       reason: "keeps the model's reasoning in the run timeline instead of the answer",
     });
-  } else if (!model.supports_thinking && values.think !== null) {
+  } else if (model.supports_thinking === false && values.think !== null) {
     changes.push({
       field: "think",
       from: values.think,
@@ -64,7 +64,7 @@ export function modelAdjustments(
     });
   }
 
-  if (!model.supports_tools && values.tools.length > 0) {
+  if (model.supports_tools === false && values.tools.length > 0) {
     changes.push({
       field: "tools",
       from: values.tools,

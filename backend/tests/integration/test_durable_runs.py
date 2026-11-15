@@ -17,10 +17,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
+from app.crypto import SecretBox
 from app.db.models import Run
 from app.main import create_app
 from app.runtime.providers.registry import ProviderRegistry
 from app.services import run_queue, run_service
+from app.services.provider_service import ProviderResolver
 from app.services.run_stream import follow_run
 from app.tools.registry import build_default_registry
 from app.worker.run_worker import RunWorker
@@ -63,7 +65,7 @@ async def standalone_worker(app: FastAPI, provider: FakeProvider, worker_id: str
     worker = RunWorker(
         app.state.settings,
         app.state.sessionmaker,
-        ProviderRegistry([provider]),
+        ProviderResolver(ProviderRegistry([provider]), SecretBox("")),
         build_default_registry(),
         worker_id=worker_id,
     )
@@ -89,7 +91,7 @@ async def test_disconnect_does_not_cancel_and_stream_replays(
             await principal_of(client),
             uuid.UUID(conv["id"]),
             "go",
-            providers=app.state.provider_registry,
+            resolver=app.state.provider_resolver,
         )
     # A follower reads the first event and goes away (client disconnect).
     follower = follow_run(app.state.sessionmaker, app.state.settings.listen_dsn, run.id)
@@ -179,7 +181,7 @@ async def test_cancel_queued_run_without_worker(
                 await principal_of(c),
                 uuid.UUID(conv["id"]),
                 "x",
-                providers=api.state.provider_registry,
+                resolver=api.state.provider_resolver,
             )
         assert (await c.post(f"/api/runs/{run.id}/cancel")).status_code == 202
         detail = (await c.get(f"/api/runs/{run.id}")).json()
@@ -248,7 +250,7 @@ async def test_two_workers_never_execute_a_run_twice(settings: Settings, clean_d
                     await principal_of(c),
                     uuid.UUID(conv["id"]),
                     "q",
-                    providers=api.state.provider_registry,
+                    resolver=api.state.provider_resolver,
                 )
                 run_ids.append(run.id)
         async with (

@@ -146,6 +146,44 @@ class AuditLog(Base):
     )
 
 
+class ProviderConnection(TimestampMixin, Base):
+    """A configured LLM provider endpoint of a workspace (the built-in Ollama is implicit)."""
+
+    __tablename__ = "provider_connections"
+    __table_args__ = (UniqueConstraint("workspace_id", "name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(100))
+    kind: Mapped[str] = mapped_column(String(32))
+    base_url: Mapped[str | None] = mapped_column(String(500))
+    secret_enc: Mapped[str | None] = mapped_column(Text)  # Fernet token, never returned
+    secret_hint: Mapped[str | None] = mapped_column(String(16))
+    status: Mapped[str] = mapped_column(String(16), default="unknown")  # ok | error | unknown
+    last_error: Mapped[str | None] = mapped_column(Text)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ModelCapabilityOverride(Base):
+    """Tool-calling support of a model as determined by a live probe or set by a user, for
+    providers whose model listing does not state it."""
+
+    __tablename__ = "model_capability_overrides"
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
+    )
+    provider_key: Mapped[str] = mapped_column(String(64), primary_key=True)  # "ollama" | uuid
+    model: Mapped[str] = mapped_column(String(200), primary_key=True)
+    supports_tools: Mapped[bool] = mapped_column(Boolean)
+    source: Mapped[str] = mapped_column(String(16))  # "probe" | "user"
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 def _workspace_fk() -> Mapped[uuid.UUID]:
     return mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
 
@@ -160,7 +198,11 @@ class Agent(TimestampMixin, Base):
     workspace_id: Mapped[uuid.UUID] = _workspace_fk()
     name: Mapped[str] = mapped_column(String(100))
     description: Mapped[str] = mapped_column(Text, default="")
-    provider: Mapped[str] = mapped_column(String(50))
+    provider: Mapped[str] = mapped_column(String(50))  # provider kind (e.g. "ollama")
+    # NULL = the server's built-in Ollama; otherwise a workspace provider connection.
+    connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("provider_connections.id", ondelete="RESTRICT"), index=True
+    )
     model: Mapped[str] = mapped_column(String(200))
     model_params: Mapped[dict[str, Any]] = mapped_column(default=dict)
     system_prompt: Mapped[str] = mapped_column(Text, default="")

@@ -7,6 +7,7 @@ import {
   useAgent,
   useDeleteAgent,
   useModels,
+  useProviders,
   useSaveAgent,
   useSkills,
   useTools,
@@ -31,7 +32,9 @@ export function AgentEditorPage() {
   const agent = useAgent(agentId);
   const skills = useSkills();
   const tools = useTools();
-  const provider = agent.data?.provider ?? "ollama";
+  const providers = useProviders();
+  const [providerOverride, setProviderOverride] = useState<string | null>(null);
+  const provider = providerOverride ?? agent.data?.connection_id ?? agent.data?.provider ?? "ollama";
   const models = useModels(provider);
   const save = useSaveAgent();
   const remove = useDeleteAgent();
@@ -128,6 +131,8 @@ export function AgentEditorPage() {
           key={agent.data?.updated_at ?? "new"}
           initialValues={initialValues}
           isNew={isNew}
+          providers={providers.data}
+          onProviderChange={setProviderOverride}
           models={models.data}
           modelsLoading={models.isPending}
           modelsUnavailable={models.isError ? errorMessage(models.error) : undefined}

@@ -95,7 +95,23 @@ Save-time checks: unknown tool / invalid tool config / unknown provider / limits
 |---|---|---|
 | GET | `/tools` | `ToolInfo[]`: `{name, description, args_schema, config_schema, timeout_s}` (JSON Schemas) |
 
-### Providers
+### Providers (V2)
+
+`{provider}` is a built-in name (`ollama`) or a connection id. Secrets are write-only (encrypted with `SECRET_ENCRYPTION_KEY`); responses expose `has_secret` and `secret_hint` (last 4 chars) only.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/providers` | Built-ins + workspace connections: `{name, id, label, kind, builtin, base_url, has_secret, secret_hint, available, status, last_error, last_checked_at}` |
+| POST | `/providers` | Create a connection `{name, kind: openai|anthropic|gemini|openai_compatible|ollama, base_url?, api_key?}` (admin). Base URLs: http(s) only, no link-local/metadata hosts, no credentials in the URL |
+| PATCH/DELETE | `/providers/{id}` | Update (omit `api_key` to keep it, `""` removes it) / delete (409 while agents use it) (admin) |
+| POST | `/providers/{provider}/test` | Health check (lists models); records status |
+| GET | `/providers/{provider}/models` | `{name, size, supports_tools (true|false|null), supports_thinking, tools_source (provider|probe|user|null), context_window, display_name}` — capabilities are only those the provider states, plus probe/user overrides where it states nothing |
+| PUT | `/providers/{provider}/models/{model}/capabilities` | `{supports_tools: bool|null}` override (editor) |
+| POST | `/providers/{provider}/models/{model}/probe` | Live tool-calling check (one small request) → `{model, supports_tools, detail}`; records the result (editor) |
+
+Agents reference a connection with `connection_id` (null = built-in `provider`); `model_params` accepts `temperature`, `top_p`, `max_tokens` for every provider and `num_ctx`/`think` for Ollama only (422 otherwise). A tool-enabled agent on a model with unknown tool support can be saved but its runs fail with `model_no_tool_support` until the support is confirmed.
+
+### Providers (MVP endpoints, unchanged paths)
 | Method | Path | Response |
 |---|---|---|
 | GET | `/providers` | `[{name: "ollama", available: bool}]` |

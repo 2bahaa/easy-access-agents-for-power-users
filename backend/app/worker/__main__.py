@@ -6,8 +6,10 @@ import logging
 import signal
 
 from app.config import get_settings
+from app.crypto import SecretBox
 from app.db.session import create_engine, create_sessionmaker
 from app.runtime.providers.registry import build_default_providers
+from app.services.provider_service import ProviderResolver
 from app.tools.registry import build_default_registry
 from app.worker.run_worker import RunWorker
 
@@ -20,7 +22,10 @@ async def main() -> None:
     worker = RunWorker(
         settings,
         create_sessionmaker(engine),
-        build_default_providers(settings.ollama_base_url),
+        ProviderResolver(
+            build_default_providers(settings.ollama_base_url),
+            SecretBox(settings.secret_encryption_key.get_secret_value()),
+        ),
         build_default_registry(),
     )
     stop = asyncio.Event()

@@ -14,10 +14,12 @@ export interface ToolPickerProps {
   onChange: (value: ToolSelection[]) => void;
   /** When set, tools cannot be enabled and this reason is shown. */
   disabledReason?: string;
+  /** A non-blocking caution shown above the list (e.g. unknown tool support). */
+  warning?: string;
 }
 
 /** Enable tools for an agent and edit each tool's per-agent configuration. */
-export function ToolPicker({ tools, value, onChange, disabledReason }: ToolPickerProps) {
+export function ToolPicker({ tools, value, onChange, disabledReason, warning }: ToolPickerProps) {
   const selected = new Map(value.map((t) => [t.name, t]));
 
   const toggle = (tool: ToolInfo, on: boolean) => {
@@ -33,10 +35,13 @@ export function ToolPicker({ tools, value, onChange, disabledReason }: ToolPicke
 
   return (
     <div className="space-y-3">
-      {disabledReason && (
-        <div className="flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300">
+      {(disabledReason ?? warning) && (
+        <div
+          role={disabledReason ? undefined : "note"}
+          className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 p-3 text-xs text-warning"
+        >
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-          <span>{disabledReason}</span>
+          <span>{disabledReason ?? warning}</span>
         </div>
       )}
       <ul aria-label="Tools" className="space-y-2">

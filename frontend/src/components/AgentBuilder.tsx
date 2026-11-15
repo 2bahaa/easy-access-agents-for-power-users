@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 
-import type { AgentWrite, ModelInfo, SkillSummary, ToolInfo } from "../api/types";
+import type { AgentWrite, ModelInfo, ProviderInfo, SkillSummary, ToolInfo } from "../api/types";
 import {
   LIMITS,
   toAgentWrite,
@@ -42,6 +42,7 @@ const SERVER_FIELDS: Record<string, keyof AgentFormValues> = {
   model: "model",
   temperature: "temperature",
   num_ctx: "numCtx",
+  max_tokens: "maxTokens",
   system_prompt: "systemPrompt",
   max_tool_calls: "maxToolCalls",
   run_timeout_s: "runTimeoutS",
@@ -52,6 +53,10 @@ const CONTEXT_SIZES = [2048, 4096, 8192, 16384, 32768, 65536];
 
 export interface AgentBuilderProps {
   initialValues: AgentFormValues;
+  /** Providers the agent can run on (built-ins and workspace connections). */
+  providers?: ProviderInfo[];
+  /** Called with the provider ref (`name`) whose models should be loaded. */
+  onProviderChange?: (provider: string) => void;
   models?: ModelInfo[];
   modelsLoading?: boolean;
   modelsUnavailable?: string;
@@ -77,6 +82,8 @@ export interface AgentBuilderProps {
  */
 export function AgentBuilder({
   initialValues,
+  providers,
+  onProviderChange,
   models,
   modelsLoading,
   modelsUnavailable,
@@ -100,6 +107,18 @@ export function AgentBuilder({
   );
 
   const selectedModel = models?.find((m) => m.name === values.model);
+  const providerRef = values.connectionId ?? values.provider;
+  const currentProvider = providers?.find((p) => p.name === providerRef);
+  const isOllama = values.connectionId === null ? values.provider === "ollama" : currentProvider?.kind === "ollama";
+
+  /** Switching provider clears the model (names are provider-specific). */
+  const selectProvider = (ref: string) => {
+    const p = providers?.find((x) => x.name === ref);
+    if (!p) return;
+    update({ ...values, provider: p.builtin ? p.name : p.kind, connectionId: p.builtin ? null : p.name, model: "" });
+    setAdjusted(null);
+    onProviderChange?.(ref);
+  };
   const supportsTools = selectedModel?.supports_tools;
   const dirty = useMemo(
     () => JSON.stringify(values) !== JSON.stringify(initialValues),
@@ -242,8 +261,30 @@ export function AgentBuilder({
         </div>
 
         <div className="space-y-5 lg:col-span-2">
-          <Section title="Model" description="Runs locally through Ollama." icon={<Cpu />}>
+          <Section
+            title="Model"
+            description={
+              currentProvider && !currentProvider.builtin
+                ? `Runs on ${currentProvider.label}.`
+                : "Runs locally through Ollama."
+            }
+            icon={<Cpu />}
+          >
             <div className="space-y-4">
+              {providers && providers.length > 1 && (
+                <Field label="Provider">
+                  {(a11y) => (
+                    <Select {...a11y} value={providerRef} onChange={(e) => selectProvider(e.target.value)}>
+                      {providers.map((p) => (
+                        <option key={p.name} value={p.name}>
+                          {p.label}
+                          {p.status === "error" ? " (unreachable)" : ""}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                </Field>
+              )}
               <div>
                 <ModelPicker
                   models={models}
@@ -329,6 +370,25 @@ export function AgentBuilder({
                 )}
               </Field>
 
+              <Field
+                label="Max output tokens"
+                error={mergedErrors.maxTokens}
+                hint="Leave empty for the provider's default."
+              >
+                {(a11y) => (
+                  <Input
+                    {...a11y}
+                    type="number"
+                    min={1}
+                    max={200000}
+                    placeholder="Default"
+                    value={values.maxTokens ?? ""}
+                    onChange={(e) => set("maxTokens", e.target.value === "" ? null : e.target.valueAsNumber)}
+                  />
+                )}
+              </Field>
+
+              {isOllama && (
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Context window">
                   {(a11y) => (
@@ -365,6 +425,7 @@ export function AgentBuilder({
                   )}
                 </Field>
               </div>
+              )}
             </div>
           </Section>
 
@@ -380,6 +441,11 @@ export function AgentBuilder({
               disabledReason={
                 supportsTools === false
                   ? `${values.model} does not support tool calling. Choose a model with the Tools badge to enable tools.`
+                  : undefined
+              }
+              warning={
+                supportsTools === null && values.model
+                  ? `The provider does not report whether ${values.model} can call tools. Run the tool-calling check in Providers before running this agent with tools.`
                   : undefined
               }
             />

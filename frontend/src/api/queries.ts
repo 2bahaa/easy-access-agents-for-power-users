@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "./client";
-import type { AgentWrite, Role, SkillWrite } from "./types";
+import type { AgentWrite, ProviderConnectionWrite, Role, SkillWrite } from "./types";
 
 export const keys = {
   health: ["health"] as const,
@@ -38,13 +38,49 @@ export const useSkill = (id: string | undefined) =>
 export const useTools = () =>
   useQuery({ queryKey: keys.tools, queryFn: api.listTools, staleTime: Infinity });
 
-export const useModels = (provider: string) =>
+export const useModels = (provider: string, enabled = true) =>
   useQuery({
     queryKey: keys.models(provider),
     queryFn: () => api.listModels(provider),
     staleTime: 30_000,
     retry: false,
+    enabled: enabled && !!provider,
   });
+
+export const useProviders = () =>
+  useQuery({ queryKey: keys.providers, queryFn: api.listProviders, staleTime: 15_000 });
+
+function useProviderMutation<V, R>(fn: (v: V) => Promise<R>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.providers }),
+  });
+}
+
+export const useCreateProvider = () =>
+  useProviderMutation((data: ProviderConnectionWrite) => api.createProvider(data));
+export const useUpdateProvider = () =>
+  useProviderMutation(({ id, data }: { id: string; data: ProviderConnectionWrite }) => api.updateProvider(id, data));
+export const useDeleteProvider = () => useProviderMutation((id: string) => api.deleteProvider(id));
+export const useTestProvider = () => useProviderMutation((name: string) => api.testProvider(name));
+
+export function useSetModelTools(provider: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ model, supportsTools }: { model: string; supportsTools: boolean | null }) =>
+      api.setModelTools(provider, model, supportsTools),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.models(provider) }),
+  });
+}
+
+export function useProbeModel(provider: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (model: string) => api.probeModel(provider, model),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.models(provider) }),
+  });
+}
 
 export function useSaveAgent() {
   const qc = useQueryClient();

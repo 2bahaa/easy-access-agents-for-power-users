@@ -112,13 +112,16 @@ class FakeProvider:
         *,
         no_tool_models: set[str] | None = None,
         missing_models: set[str] | None = None,
+        unknown_tool_models: set[str] | None = None,
         available: bool = True,
     ) -> None:
         self.model = model or FakeChatModel()
         self.no_tool_models = no_tool_models or set()
         self.missing_models = missing_models or set()
+        self.unknown_tool_models = unknown_tool_models or set()
         self.available = available
         self.created: list[tuple[str, dict[str, Any]]] = []
+        self.specs: list[Any] = []  # ProviderSpecs this fake was built from (cloud factory)
 
     async def is_available(self) -> bool:
         return self.available
@@ -126,6 +129,8 @@ class FakeProvider:
     async def get_capabilities(self, model: str) -> ModelCapabilities:
         if model in self.missing_models:
             raise ModelNotFoundError(f"Model '{model}' is not available in Ollama")
+        if model in self.unknown_tool_models:  # provider does not report tool support
+            return ModelCapabilities(supports_tools=None, supports_thinking=None)
         return ModelCapabilities(
             supports_tools=model not in self.no_tool_models, supports_thinking=False
         )
@@ -136,6 +141,10 @@ class FakeProvider:
         return [
             ModelInfo(name="fake-tools:1b", size=1, supports_tools=True, supports_thinking=False),
             ModelInfo(name="fake-plain:1b", size=2, supports_tools=False, supports_thinking=True),
+            *[
+                ModelInfo(name=m, size=None, supports_tools=None, supports_thinking=None)
+                for m in sorted(self.unknown_tool_models)
+            ],
         ]
 
     def create_chat_model(self, model: str, params: dict[str, Any]) -> BaseChatModel:

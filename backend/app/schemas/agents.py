@@ -10,7 +10,11 @@ from app.schemas.skills import SkillRef
 class ModelParams(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    # Portable parameters (every provider).
     temperature: float | None = Field(default=None, ge=0, le=2)
+    top_p: float | None = Field(default=None, gt=0, le=1)
+    max_tokens: int | None = Field(default=None, ge=1, le=200_000)
+    # Ollama only (validated against the agent's provider kind).
     num_ctx: int | None = Field(default=None, ge=256, le=1_048_576)
     think: bool | None = None
 
@@ -28,6 +32,8 @@ class AgentWrite(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     description: str = Field(default="", max_length=500)
     provider: str = Field(default="ollama", min_length=1, max_length=50)
+    # A workspace provider connection; when set, `provider` is taken from its kind.
+    connection_id: uuid.UUID | None = None
     model: str = Field(min_length=1, max_length=200)
     model_params: ModelParams = Field(default_factory=ModelParams)
     system_prompt: str = Field(default="", max_length=20_000)
@@ -60,6 +66,7 @@ class AgentSummary(BaseModel):
     name: str
     description: str
     provider: str
+    connection_id: uuid.UUID | None = None
     model: str
     updated_at: datetime
 

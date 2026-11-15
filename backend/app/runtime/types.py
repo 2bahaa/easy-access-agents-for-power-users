@@ -33,6 +33,7 @@ class AgentConfig(BaseModel):
     agent_id: uuid.UUID
     name: str
     provider: str
+    connection_id: uuid.UUID | None = None  # None = built-in provider named `provider`
     model: str
     model_params: dict[str, Any] = Field(default_factory=dict)
     system_prompt: str = ""

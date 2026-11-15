@@ -33,7 +33,14 @@ async def test_agent_crud_roundtrip(client: AsyncClient) -> None:
     assert created.status_code == 201, created.text
     agent = created.json()
     assert agent["provider"] == "ollama"
-    assert agent["model_params"] == {"temperature": 0.2, "num_ctx": None, "think": None}
+    assert agent["model_params"] == {
+        "temperature": 0.2,
+        "top_p": None,
+        "max_tokens": None,
+        "num_ctx": None,
+        "think": None,
+    }
+    assert agent["connection_id"] is None  # built-in Ollama
     assert [s["slug"] for s in agent["skills"]] == ["first"]
     assert agent["tools"] == [{"name": "calculator", "config": {}}]
     assert agent["max_tool_calls"] == 8 and agent["run_timeout_s"] == 120

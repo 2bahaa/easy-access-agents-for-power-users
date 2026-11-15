@@ -2,9 +2,14 @@
  * API types mirroring backend/app/schemas (docs/API_DESIGN.md). Keep in sync.
  */
 
+/** The API returns every key (null = provider default); writes may omit them. */
 export interface ModelParams {
   temperature?: number | null;
+  top_p?: number | null;
+  max_tokens?: number | null;
+  /** Ollama only. */
   num_ctx?: number | null;
+  /** Ollama only. */
   think?: boolean | null;
 }
 
@@ -17,6 +22,8 @@ export interface AgentWrite {
   name: string;
   description: string;
   provider: string;
+  /** Workspace provider connection; null = the server's built-in provider. */
+  connection_id?: string | null;
   model: string;
   model_params: ModelParams;
   system_prompt: string;
@@ -36,6 +43,7 @@ export interface AgentSummary {
   id: string;
   name: string;
   description: string;
+  connection_id?: string | null;
   provider: string;
   model: string;
   updated_at: string;
@@ -95,16 +103,48 @@ export interface ToolInfo {
   timeout_s: number;
 }
 
+export type ProviderKind = "ollama" | "openai" | "openai_compatible" | "anthropic" | "gemini";
+
+/** A provider an agent can use: a server built-in (name "ollama") or a workspace connection. */
 export interface ProviderInfo {
+  /** Built-ins: registry name; connections: their id. Used in /providers/{name}/… URLs. */
   name: string;
-  available: boolean;
+  id: string | null;
+  label: string;
+  kind: ProviderKind;
+  builtin: boolean;
+  base_url: string | null;
+  has_secret: boolean;
+  secret_hint: string | null;
+  available: boolean | null;
+  status: "ok" | "error" | "unknown";
+  last_error: string | null;
+  last_checked_at: string | null;
+}
+
+export interface ProviderConnectionWrite {
+  name?: string;
+  kind?: ProviderKind;
+  base_url?: string | null;
+  /** Write-only. Omit to keep the stored key; "" removes it. */
+  api_key?: string | null;
+}
+
+export interface ProbeResult {
+  model: string;
+  supports_tools: boolean;
+  detail: string;
 }
 
 export interface ModelInfo {
   name: string;
   size: number | null;
-  supports_tools: boolean;
-  supports_thinking: boolean;
+  /** null = the provider does not say (use the tool-calling check or set it in Providers). */
+  supports_tools: boolean | null;
+  supports_thinking: boolean | null;
+  tools_source?: "provider" | "probe" | "user" | null;
+  context_window?: number | null;
+  display_name?: string | null;
 }
 
 export interface Health {
