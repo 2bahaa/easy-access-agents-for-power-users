@@ -128,4 +128,30 @@ describe("ChatPage", () => {
     await userEvent.type(await composer(), "hello{Enter}");
     expect(await screen.findByText("A run is already in progress for this conversation", { selector: "p[role=alert]" })).toBeInTheDocument();
   });
+  it("reattaches to a run that is still active on the server after a reload", async () => {
+    let finished = false;
+    const runningConversation: Conversation = {
+      ...persistedConversation,
+      messages: persistedConversation.messages.slice(0, 1),
+      runs: [{ ...persistedConversation.runs[0]!, status: "running", finished_at: null }],
+    };
+    const { calls } = mockApi({
+      "GET /health": HEALTH,
+      "GET /agents/a-1": CHAT_AGENT,
+      "GET /conversations?agent_id=a-1": [persistedConversation],
+      "GET /conversations/c-1": () => (finished ? persistedConversation : runningConversation),
+      "GET /runs/r-1/stream?after=0": () => {
+        finished = true;
+        return sseResponse(toSSE(CALCULATOR_RUN));
+      },
+      "GET /runs/r-1/events": persistedEvents,
+    });
+    renderApp("/agents/a-1/chat/c-1");
+
+    // The live run is followed (not re-sent) and ends in the persisted transcript.
+    expect((await screen.findAllByText("406.5", { exact: false })).length).toBeGreaterThan(0);
+    await waitFor(() => expect(calls.some((c) => c.path === "/runs/r-1/stream?after=0")).toBe(true));
+    expect(calls.filter((c) => c.method === "POST")).toEqual([]);
+    expect(calls.filter((c) => c.path.startsWith("/runs/r-1/stream"))).toHaveLength(1);
+  });
 });

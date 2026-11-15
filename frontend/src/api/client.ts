@@ -109,6 +109,24 @@ export async function* streamMessage(
   }
 }
 
+/**
+ * Follow a run (active or finished) from any page load: replays persisted events after
+ * `after`, then streams live events until the run ends. Runs are durable: aborting only
+ * stops following, the run keeps executing on the server.
+ */
+export async function* followRun(runId: string, signal?: AbortSignal, after = 0): AsyncGenerator<AgentEvent> {
+  const response = await fetch(`${API_BASE_URL}/runs/${runId}/stream?after=${after}`, {
+    headers: { Accept: "text/event-stream" },
+    signal,
+  });
+  if (!response.ok) throw await toApiError(response);
+  if (!response.body) throw new Error("The server returned an empty stream.");
+  for await (const message of readSSE(response.body)) {
+    if (!message.data) continue;
+    yield JSON.parse(message.data) as AgentEvent;
+  }
+}
+
 const json = (method: string, body: unknown): RequestInit => ({
   method,
   body: JSON.stringify(body),

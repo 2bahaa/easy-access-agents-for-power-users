@@ -26,7 +26,7 @@ Infra: `docker compose up -d db` (PostgreSQL only, for local dev) · `docker com
 - Tools are defined in code (`app/tools/`) and registered in the tool registry; per-agent permission and config live in the DB.
 - Our Postgres tables are the single source of conversation history. No LangGraph checkpointer in the MVP.
 - Schema changes go through Alembic migrations only — never `create_all` outside tests.
-- The backend must run with a single worker (active runs live in process memory).
+- Runs are durable: they live in Postgres (`runs` queue) and execute in a run worker (embedded in the API by default, or `python -m app.worker`). API and workers share no memory — coordinate only through the DB (`SKIP LOCKED` claims, `LISTEN/NOTIFY`, cancel flag). Never keep run state in API process memory.
 - SSE event types are a single Pydantic discriminated union mirrored by a TypeScript union. Change both together.
 - UI components in `frontend/src/components/` are prop-driven (no data fetching inside) so they can become the SDK later. Data fetching lives in `features/` via the hooks in `api/queries.ts`.
 - Use the semantic color tokens (`bg-surface`, `text-muted`, `border-line`, …) instead of raw grays so light/dark themes keep working.

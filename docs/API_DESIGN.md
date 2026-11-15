@@ -90,14 +90,17 @@ Save-time checks: unknown tool / invalid tool config / unknown provider / limits
 | DELETE | `/conversations/{id}` | — | 204 |
 | POST | `/conversations/{id}/messages` | `{content}` | **SSE stream** (§4) |
 
-The POST-messages endpoint persists the user message, creates a run and streams its events. Errors before the stream starts return normal HTTP errors: 404 unknown conversation, 422 invalid body, **409 if a run is already active in this conversation**. Errors after the stream starts are delivered as `run.failed`. The first message sets the conversation title (first line, max 60 chars) if it still has the default title. Closing the connection cancels the run.
+The POST-messages endpoint persists the user message, creates a run and streams its events. Errors before the stream starts return normal HTTP errors: 404 unknown conversation, 422 invalid body, **409 if a run is already active in this conversation**. Errors after the stream starts are delivered as `run.failed`. The first message sets the conversation title (first line, max 60 chars) if it still has the default title. The run is queued and executed by a run worker; **closing the connection does not cancel it** (V2 change — use `POST /runs/{id}/cancel`); reattach with `GET /runs/{id}/stream`.
 
 ### Runs
 | Method | Path | Response |
 |---|---|---|
 | GET | `/runs/{id}` | `Run`: `{id, conversation_id, agent_id, status, tool_call_count, usage, error, started_at, finished_at}` |
 | GET | `/runs/{id}/events` | Persisted `RunEvent[]` (timeline replay; no token deltas) |
-| POST | `/runs/{id}/cancel` | 202; the run ends with `run.cancelled`. 409 if the run is not active, 404 if unknown |
+| GET | `/runs/{id}/stream` | SSE: replays persisted events with `seq` > `Last-Event-ID` header (or `?after=`), then streams live events (including token deltas) until the terminal event. Works for active and finished runs. 404 if unknown |
+| POST | `/runs/{id}/cancel` | 202; a queued run is cancelled immediately, a running one is stopped by its worker; the run ends with `run.cancelled`. 409 if the run is not active, 404 if unknown |
+
+Run `status` values: `queued` (waiting for a worker), `running`, `completed`, `failed`, `cancelled`, `limit_exceeded`, `timeout`.
 
 ## 4. Streaming event protocol (SSE)
 

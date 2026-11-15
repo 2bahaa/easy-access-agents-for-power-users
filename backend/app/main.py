@@ -13,10 +13,9 @@ from app.api.routers import agents, conversations, health, providers, runs, skil
 from app.config import Settings, get_settings
 from app.db.session import create_engine, create_sessionmaker
 from app.runtime.providers.registry import ProviderRegistry, build_default_providers
-from app.services.run_manager import RunManager
-from app.services.run_service import mark_interrupted_runs
 from app.services.skill_service import seed_builtin_skills
 from app.tools.registry import ToolRegistry, build_default_registry
+from app.worker.run_worker import RunWorker
 
 logger = logging.getLogger(__name__)
 
@@ -37,13 +36,22 @@ def create_app(
         try:
             async with app.state.sessionmaker() as session:
                 await seed_builtin_skills(session, settings.skills_dir)
-                if interrupted := await mark_interrupted_runs(session):
-                    logger.warning("Marked %d interrupted run(s) as failed", interrupted)
         except Exception:
             # Keep serving so /api/health can report the problem.
             logger.exception("Startup DB tasks failed (is the database migrated?)")
+        worker: RunWorker | None = None
+        if settings.run_worker_embedded:
+            worker = RunWorker(
+                settings,
+                app.state.sessionmaker,
+                app.state.provider_registry,
+                app.state.tool_registry,
+            )
+            worker.start()
+        app.state.run_worker = worker
         yield
-        await app.state.run_manager.shutdown()
+        if worker is not None:
+            await worker.stop(cancel_runs=True)
         await engine.dispose()
 
     app = FastAPI(title="Easy Access Agents", version=__version__, lifespan=lifespan)
@@ -52,7 +60,7 @@ def create_app(
     app.state.provider_registry = provider_registry or build_default_providers(
         settings.ollama_base_url
     )
-    app.state.run_manager = RunManager()
+    app.state.run_worker = None
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,

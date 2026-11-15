@@ -46,11 +46,13 @@ Verified versions (Phase 0): Python 3.12, LangGraph 1.2.22, langchain-core 1.8, 
 | `main.py` | App factory, lifespan (DB engine, registries, skill seeding), CORS, router mounting |
 | `config.py` | `Settings` from environment: DB URL, Ollama URL, `WORKSPACE_DIR`, global caps |
 | `api/routers/` | HTTP endpoints only: parse/validate, call a service, map results/errors |
-| `api/sse.py` | Serialize `AgentEvent`s to SSE frames, keep-alives; client disconnect → `RunManager.cancel()` |
+| `api/sse.py` | Serialize `AgentEvent`s to SSE frames, keep-alives; `follow_run_sse` streams a run from the database (disconnect only stops following) |
 | `api/errors.py` | Domain exceptions → problem-JSON responses |
 | `schemas/` | Pydantic request/response models |
-| `services/` | Use cases: agent/skill CRUD with validation, conversation management, run orchestration (`run_service`: build `AgentConfig` snapshot, persist user message/run, `DbRunRecorder` for events and results) |
-| `services/run_manager.py` | In-process registry of active runs. Each run is driven by a background task that persists events and the final result independently of the HTTP connection; SSE responses subscribe via a queue; cancel is synchronous |
+| `services/` | Use cases: agent/skill CRUD with validation, conversation management, run orchestration (`run_service`: build `AgentConfig` snapshot, queue the run with the user message, rebuild it for a worker, apply results) |
+| `services/run_queue.py` | Durable run queue on Postgres: claim (`FOR UPDATE SKIP LOCKED`), heartbeat, cancel (queued → cancelled at once; running → `cancel_requested` + NOTIFY), reaping of runs whose worker died, batched event writes |
+| `services/pubsub.py`, `run_stream.py` | `LISTEN/NOTIFY` helpers; `follow_run` = replay persisted events, then live notifications (dedup by `seq`) |
+| `worker/` | `RunWorker`: claims queued runs, executes `AgentRun`s, writes events in batches, heartbeats, honours cancel flags. Embedded in the API (`RUN_WORKER_EMBEDDED=true`) or standalone (`python -m app.worker`) |
 | `db/` | SQLAlchemy models and async engine/session factory. Services query via the session directly; a repository layer is added only if query logic starts to repeat |
 | `runtime/providers/` | `Provider` protocol (list models, capabilities, build chat model, classify provider errors), registry, Ollama implementation |
 | `runtime/graph.py`, `state.py` | LangGraph `StateGraph` definition and state |
@@ -127,10 +129,11 @@ Tools are not stored as rows; the catalog comes from the code registry. Deleting
 ## 7. Agent execution lifecycle
 
 1. `POST /api/conversations/{id}/messages` with the user's content.
-2. `run_service` loads agent, skills and tool configs → immutable `AgentConfig`; creates a `runs` row with `agent_snapshot`; persists the user message.
-3. **Pre-flight:** provider resolves the model; if the agent has tools and the model lacks the `tools` capability → `run.failed` (`model_no_tool_support`).
-4. Compose system prompt (agent prompt + skills). Bind only permitted tool schemas.
-5. **Graph loop** (`graph.astream(..., stream_mode=["messages", "custom"], version="v2")`):
+2. `run_service` loads agent, skills and tool configs → immutable `AgentConfig`; creates a **queued** `runs` row with `agent_snapshot` and persists the user message in one transaction, then NOTIFYs workers. A partial unique index guarantees one active (queued/running) run per conversation across all processes (409).
+3. A run worker claims the run (`SKIP LOCKED`), rebuilds the `AgentRun` from the snapshot and the stored history, and executes it. The API response follows the run's events from the database (step 9).
+4. **Pre-flight:** provider resolves the model; if the agent has tools and the model lacks the `tools` capability → `run.failed` (`model_no_tool_support`).
+5. Compose system prompt (agent prompt + skills). Bind only permitted tool schemas.
+6. **Graph loop** (`graph.astream(..., stream_mode=["messages", "custom"], version="v2")`):
    - `agent` node calls the LLM; token chunks with `langgraph_node == "agent"` → `message.delta` (thinking → `reasoning.delta`).
    - If tool calls → `tools` node, per call (events go through the LangGraph stream writer):
      a. `tool_call_count < max_tool_calls`? else end the run: status `limit_exceeded`, `run.failed`
@@ -140,26 +143,28 @@ Tools are not stored as rows; the catalog comes from the code registry. Deleting
      e. `asyncio.wait_for(tool.run(...), timeout_s)` → `tool.call.completed`, or `tool.call.failed` (`timeout`/`execution`)
      f. append a `ToolMessage` with the result or a user-safe error, so the model can recover
    - Loop until the model replies without tool calls; LangGraph `recursion_limit` is derived from `max_tool_calls` as a backstop.
-6. The whole run is wrapped in `asyncio.timeout(run_timeout_s)` → status `timeout`.
-7. Persist assistant/tool messages, run events and final status/usage; emit exactly one terminal event.
-8. Client disconnect or `POST /runs/{id}/cancel` cancels the run task → status `cancelled`.
+7. The whole run is wrapped in `asyncio.timeout(run_timeout_s)` → status `timeout`.
+8. The worker writes events in batches (one transaction per burst: `run_events` rows for persisted events + NOTIFY for every event, in order). The terminal event is committed together with the assistant/tool messages and final status/usage, so a follower never sees the end before the messages.
+9. Followers (`POST …/messages` response, `GET /runs/{id}/stream`) LISTEN on the run's channel, replay persisted events after `Last-Event-ID`, then stream live events until the terminal event. A client disconnect only stops following; `POST /runs/{id}/cancel` stops the run (`cancelled`).
+10. Workers heartbeat their runs; a run whose worker stops heartbeating for `RUN_STALE_AFTER_S` is marked `failed` ("Interrupted by a server restart") with a terminal event.
 
 ## 8. Streaming design
 
-The graph runs in a producer task that feeds a queue; `AgentRun.stream()` reads the queue. The run timeout and cancellation therefore apply only to agent work, never to the consumer's code, and an early consumer exit (client disconnect) cancels the run. Graph streaming uses `stream_mode=["messages", "custom", "updates"]` (`version="v2"`): `messages` → token deltas, `custom` → tool events from the tool node's stream writer, `updates` → completed messages, usage and tool-call counts.
+The graph runs in a producer task that feeds a queue; `AgentRun.stream()` reads the queue. The run timeout and cancellation therefore apply only to agent work, never to the consumer's code. Token text is emitted in pieces of at most 1,500 characters so every delta fits a NOTIFY payload. Graph streaming uses `stream_mode=["messages", "custom", "updates"]` (`version="v2"`): `messages` → token deltas, `custom` → tool events from the tool node's stream writer, `updates` → completed messages, usage and tool-call counts.
 
 When `max_tool_calls` is reached, pending tool calls still receive an error `ToolMessage` so stored history remains well-formed, then the run ends with `limit_exceeded`.
 
-The runtime yields `AgentEvent` objects (Pydantic discriminated union in `runtime/events.py`). The run's background task (owned by `RunManager`) writes every non-delta event to `run_events` as it happens, forwards all events to the SSE subscriber, and on completion stores the new messages and final run status. Unanswered tool calls (e.g. after a cancel) get an error tool message so the stored history stays valid. On startup, runs left `running` by a previous process are marked `failed`.
+The runtime yields `AgentEvent` objects (Pydantic discriminated union in `runtime/events.py`). The worker persists every non-delta event to `run_events`, publishes every event on the run's NOTIFY channel (events over the 8 kB NOTIFY limit are sent as a reference to their committed row), and on completion stores the new messages and final run status. Unanswered tool calls (e.g. after a cancel) get an error tool message so the stored history stays valid.
 
-**Single-process limitation:** active runs live in one process's memory, so cancel and the one-run-per-conversation guard assume a single backend worker. Multiple workers would need a shared run registry (e.g. Postgres `LISTEN/NOTIFY` or Redis) — deferred until deployment requires it. The event protocol is specified in `API_DESIGN.md` §4. Because the runtime is transport-agnostic, WebSockets, a CLI or the future SDK can consume the same stream.
+**Durable, multi-process execution:** no run state lives in API memory. Any number of API processes (`API_WORKERS`) and run workers can share one database; runs survive API restarts (verified end-to-end against Docker: disconnect → API restart → follow from the new instance → `completed`). In-flight state of a run that loses its *worker* is not resumable yet (it is reaped as failed); LangGraph checkpointing for resumable runs arrives with human approval (V2 Phase 6). The event protocol is specified in `API_DESIGN.md` §4. Because the runtime is transport-agnostic, WebSockets, a CLI or the future SDK can consume the same stream.
 
 ## 9. Deployment (Docker)
 
 | Service | Image | Notes |
 |---|---|---|
 | `db` | `postgres:17-alpine` | Data in the `pgdata` volume; port bound to `127.0.0.1` |
-| `backend` | `backend/Dockerfile` | Runs `alembic upgrade head`, then uvicorn with **one worker** (in-memory run registry); `workspace/` mounted read-only at `/workspace`; health check on `/api/health` |
+| `backend` | `backend/Dockerfile` | Runs `alembic upgrade head`, then uvicorn (`API_WORKERS`, default 1; stateless); `RUN_WORKER_EMBEDDED=false`; `workspace/` mounted read-only at `/workspace`; health check on `/api/health` |
+| `worker` | `backend/Dockerfile` | Same image, `python -m app.worker`: executes queued runs (`RUN_WORKER_CONCURRENCY`); starts after the API is healthy (migrations applied) |
 | `frontend` | `frontend/Dockerfile` | Static build behind nginx; SPA fallback; `/api` proxied to `backend:8000` with `proxy_buffering off` and 1 h read timeout for SSE |
 
 Inside Docker, `DATABASE_URL` and `OLLAMA_BASE_URL` are set explicitly in `docker-compose.yml`

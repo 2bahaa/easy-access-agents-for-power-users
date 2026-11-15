@@ -2,14 +2,13 @@
 
 A dedicated test database (`<dev db>_test`, or TEST_DATABASE_URL) is recreated once
 per session and migrated with Alembic, so every test run also exercises the
-migrations. Each test runs inside a transaction that is rolled back afterwards.
+migrations. Data is really committed (runs execute in a worker on other connections and
+use LISTEN/NOTIFY, which only see committed data); every DB test starts from empty tables.
 """
 
 import asyncio
 import os
 from collections.abc import AsyncIterator, Iterator
-from contextlib import asynccontextmanager
-from pathlib import Path
 
 import pytest
 from alembic.config import Config
@@ -20,8 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engin
 from sqlalchemy.pool import NullPool
 
 from alembic import command
-from app.api.deps import get_session, get_session_factory
 from app.config import BACKEND_DIR, Settings, get_settings
+from app.db.models import Base
 from app.main import create_app
 from app.runtime.providers.registry import ProviderRegistry
 from tests.fakes import FakeProvider
@@ -66,7 +65,10 @@ def settings(database_url: str, tmp_path_factory: pytest.TempPathFactory) -> Set
     return Settings(
         database_url=database_url,
         workspace_dir=tmp_path_factory.mktemp("workspace"),
-        skills_dir=Path(BACKEND_DIR / "skills"),
+        skills_dir=tmp_path_factory.mktemp("skills"),  # no built-in skills seeded in tests
+        run_heartbeat_s=0.2,
+        run_poll_interval_s=0.2,
+        run_stale_after_s=2.0,
     )
 
 
@@ -78,17 +80,17 @@ async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
 
 
 @pytest.fixture
-async def session(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
-    async with engine.connect() as conn:
-        trans = await conn.begin()
-        s = AsyncSession(
-            bind=conn, expire_on_commit=False, join_transaction_mode="create_savepoint"
-        )
-        try:
-            yield s
-        finally:
-            await s.close()
-            await trans.rollback()
+async def clean_db(engine: AsyncEngine) -> None:
+    """Start from empty tables (TRUNCATE is fast and resets everything in one statement)."""
+    tables = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
+    async with engine.begin() as conn:
+        await conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+
+
+@pytest.fixture
+async def session(engine: AsyncEngine, clean_db: None) -> AsyncIterator[AsyncSession]:
+    async with AsyncSession(bind=engine, expire_on_commit=False) as s:
+        yield s
 
 
 @pytest.fixture
@@ -97,25 +99,18 @@ def fake_provider() -> FakeProvider:
 
 
 @pytest.fixture
-def app(settings: Settings, session: AsyncSession, fake_provider: FakeProvider) -> FastAPI:
-    """App wired to the test transaction and the fake provider. Background run persistence
-    uses the same session, so everything is rolled back after the test."""
+async def app(
+    settings: Settings, clean_db: None, fake_provider: FakeProvider
+) -> AsyncIterator[FastAPI]:
+    """The real app (lifespan included: engine, embedded run worker) on the test database,
+    with the fake provider."""
     application = create_app(settings, provider_registry=ProviderRegistry([fake_provider]))
-
-    async def _session_override() -> AsyncIterator[AsyncSession]:
-        yield session
-
-    @asynccontextmanager
-    async def _shared_session() -> AsyncIterator[AsyncSession]:
-        yield session
-
-    application.dependency_overrides[get_session] = _session_override
-    application.dependency_overrides[get_session_factory] = lambda: _shared_session
-    return application
+    async with application.router.lifespan_context(application):
+        await asyncio.wait_for(application.state.run_worker.ready.wait(), timeout=10)
+        yield application
 
 
 @pytest.fixture
 async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
-    await app.state.run_manager.shutdown()

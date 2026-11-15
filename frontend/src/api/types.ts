@@ -141,7 +141,7 @@ export interface Message {
   created_at: string;
 }
 
-export type RunStatus = "running" | "completed" | "failed" | "cancelled" | "limit_exceeded" | "timeout";
+export type RunStatus = "queued" | "running" | "completed" | "failed" | "cancelled" | "limit_exceeded" | "timeout";
 
 export interface Run {
   id: string;

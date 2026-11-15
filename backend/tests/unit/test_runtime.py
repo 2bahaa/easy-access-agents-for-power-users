@@ -347,3 +347,15 @@ def test_token_deltas_are_not_persisted() -> None:
 
     assert not MessageDelta.persisted and not ReasoningDelta.persisted
     assert RunStarted.persisted and ToolCallStarted.persisted
+
+
+async def test_large_token_chunks_are_split_into_bounded_deltas(tmp_path: Path) -> None:
+    from app.runtime.events import MessageDelta
+    from app.runtime.executor import MAX_DELTA_CHARS
+
+    big = "y" * (MAX_DELTA_CHARS * 2 + 10)  # one word: the fake streams it as one chunk
+    events = await collect(make_run(tmp_path, [reply(big)]))
+    deltas = [e for e in events if isinstance(e, MessageDelta)]
+    assert len(deltas) == 3
+    assert all(len(e.text) <= MAX_DELTA_CHARS for e in deltas)
+    assert "".join(e.text for e in deltas) == big

@@ -34,6 +34,9 @@ from app.tools.registry import ToolRegistry
 logger = logging.getLogger(__name__)
 
 _DONE = object()
+# Token text is emitted in pieces of at most this many characters, so each delta event stays
+# well below transport limits (Postgres NOTIFY payloads are capped at 8000 bytes).
+MAX_DELTA_CHARS = 1500
 
 
 class _RunFailure(Exception):
@@ -54,6 +57,10 @@ def _text(content: Any) -> str:
             if not isinstance(b, dict) or b.get("type") in (None, "text")
         )
     return ""
+
+
+def _pieces(text: str) -> list[str]:
+    return [text[i : i + MAX_DELTA_CHARS] for i in range(0, len(text), MAX_DELTA_CHARS)]
 
 
 class AgentRun:
@@ -207,9 +214,11 @@ class AgentRun:
             return
         reasoning = message.additional_kwargs.get("reasoning_content")
         if isinstance(reasoning, str) and reasoning:
-            self._emit("reasoning.delta", text=reasoning)
+            for piece in _pieces(reasoning):
+                self._emit("reasoning.delta", text=piece)
         if text := _text(message.content):
-            self._emit("message.delta", text=text)
+            for piece in _pieces(text):
+                self._emit("message.delta", text=piece)
 
     def _on_update(self, data: dict[str, Any]) -> str | None:
         stop_reason: str | None = None

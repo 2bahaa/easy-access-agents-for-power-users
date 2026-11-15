@@ -5,13 +5,11 @@ from fastapi.responses import StreamingResponse
 
 from app.api.deps import (
     ProviderRegistryDep,
-    RunManagerDep,
     SessionDep,
     SessionFactoryDep,
     SettingsDep,
-    ToolRegistryDep,
 )
-from app.api.sse import sse_stream
+from app.api.sse import SSE_HEADERS, follow_run_sse
 from app.schemas.conversations import (
     ConversationCreate,
     ConversationRead,
@@ -68,23 +66,14 @@ async def post_message(
     session_factory: SessionFactoryDep,
     settings: SettingsDep,
     providers: ProviderRegistryDep,
-    tools: ToolRegistryDep,
-    manager: RunManagerDep,
 ) -> StreamingResponse:
-    """Persist the user message, start a run and stream its events (SSE).
-    Errors before the run starts are normal HTTP errors; later ones arrive as run.failed."""
-    active = await run_service.start_run(
-        session,
-        conversation_id,
-        data.content,
-        settings=settings,
-        providers=providers,
-        tools=tools,
-        manager=manager,
-        session_factory=session_factory,
-    )
+    """Persist the user message, queue a run and stream its events (SSE).
+    Errors before the run is queued are normal HTTP errors; later ones arrive as run.failed.
+    The run is durable: if the client disconnects it keeps running; reattach with
+    GET /runs/{id}/stream (Last-Event-ID supported)."""
+    run = await run_service.start_run(session, conversation_id, data.content, providers=providers)
     return StreamingResponse(
-        sse_stream(active.queue, on_disconnect=lambda: manager.cancel(active.run_id)),
+        follow_run_sse(session_factory, settings.listen_dsn, run.id),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers=SSE_HEADERS,
     )

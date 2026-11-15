@@ -9,9 +9,9 @@ from httpx import ASGITransport, AsyncClient, Response
 from langchain_core.messages import ToolMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Run
+from app.db.models import Agent, Conversation, Run
 from app.main import create_app
-from app.services.run_service import mark_interrupted_runs
+from app.services.run_service import list_run_events, mark_interrupted_runs
 from tests.fakes import FakeProvider, reply, tool_call
 from tests.sse_helpers import create_agent, create_conversation, parse_sse, send_message
 
@@ -146,8 +146,32 @@ async def test_limit_exceeded_keeps_history_valid(
     assert events[-1]["event"] == "run.completed"
 
 
+async def wait_for_status(
+    client: AsyncClient, run_id: uuid.UUID | str, *statuses: str, within_s: float = 5
+) -> dict[str, Any]:
+    deadline = asyncio.get_running_loop().time() + within_s
+    while True:
+        run: dict[str, Any] = (await client.get(f"/api/runs/{run_id}")).json()
+        if run["status"] in statuses:
+            return run
+        if asyncio.get_running_loop().time() > deadline:
+            raise AssertionError(f"run stayed {run['status']}, expected {statuses}")
+        await asyncio.sleep(0.02)
+
+
+async def active_run(client: AsyncClient, conv_id: str, within_s: float = 5) -> uuid.UUID:
+    """Wait until the conversation has a running run and return its id."""
+    deadline = asyncio.get_running_loop().time() + within_s
+    while asyncio.get_running_loop().time() < deadline:
+        runs = (await client.get(f"/api/conversations/{conv_id}")).json()["runs"]
+        if runs and runs[-1]["status"] == "running":
+            return uuid.UUID(runs[-1]["id"])
+        await asyncio.sleep(0.02)
+    raise AssertionError("run did not start")
+
+
 async def _start_slow_run(
-    client: AsyncClient, app: FastAPI, fake_provider: FakeProvider
+    client: AsyncClient, fake_provider: FakeProvider
 ) -> tuple[str, "asyncio.Task[Response]", uuid.UUID]:
     fake_provider.model.delay_s = 10
     fake_provider.model.responses = [reply("never delivered")]
@@ -156,18 +180,11 @@ async def _start_slow_run(
     task = asyncio.create_task(
         client.post(f"/api/conversations/{conv['id']}/messages", json={"content": "slow"})
     )
-    manager = app.state.run_manager
-    for _ in range(200):
-        if (run_id := manager.active_run_id(uuid.UUID(conv["id"]))) is not None:
-            return conv["id"], task, run_id
-        await asyncio.sleep(0.01)
-    raise AssertionError("run did not start")
+    return conv["id"], task, await active_run(client, conv["id"])
 
 
-async def test_cancel_endpoint(
-    client: AsyncClient, app: FastAPI, fake_provider: FakeProvider
-) -> None:
-    conv_id, task, run_id = await _start_slow_run(client, app, fake_provider)
+async def test_cancel_endpoint(client: AsyncClient, fake_provider: FakeProvider) -> None:
+    conv_id, task, run_id = await _start_slow_run(client, fake_provider)
 
     assert (await client.post(f"/api/runs/{run_id}/cancel")).status_code == 202
     events = parse_sse((await asyncio.wait_for(task, timeout=5)).text)
@@ -183,12 +200,12 @@ async def test_cancel_endpoint(
 
 
 async def test_second_message_while_running_is_409(
-    client: AsyncClient, app: FastAPI, fake_provider: FakeProvider
+    client: AsyncClient, fake_provider: FakeProvider
 ) -> None:
-    conv_id, task, run_id = await _start_slow_run(client, app, fake_provider)
+    conv_id, task, run_id = await _start_slow_run(client, fake_provider)
     resp = await client.post(f"/api/conversations/{conv_id}/messages", json={"content": "again"})
     assert resp.status_code == 409
-    app.state.run_manager.cancel(run_id)
+    await client.post(f"/api/runs/{run_id}/cancel")
     await asyncio.wait_for(task, timeout=5)
 
 
@@ -200,14 +217,17 @@ async def test_history_survives_app_restart(
     conv = await create_conversation(client, agent["id"])
     await send_message(client, conv["id"], "Remember this")
 
-    # A brand-new app instance (fresh registries, fresh run manager) sees the same data.
-    fresh = create_app(app.state.settings)
-    fresh.dependency_overrides = dict(app.dependency_overrides)
-    async with AsyncClient(transport=ASGITransport(app=fresh), base_url="http://test") as c2:
-        detail = (await c2.get(f"/api/conversations/{conv['id']}")).json()
-        assert [m["content"] for m in detail["messages"]] == ["Remember this", "Persisted answer."]
-        run_id = detail["runs"][0]["id"]
-        assert len((await c2.get(f"/api/runs/{run_id}/events")).json()) >= 3
+    # A brand-new app instance (fresh engine, registries and worker) sees the same data.
+    fresh = create_app(app.state.settings, provider_registry=app.state.provider_registry)
+    async with fresh.router.lifespan_context(fresh):
+        async with AsyncClient(transport=ASGITransport(app=fresh), base_url="http://test") as c2:
+            detail = (await c2.get(f"/api/conversations/{conv['id']}")).json()
+            assert [m["content"] for m in detail["messages"]] == [
+                "Remember this",
+                "Persisted answer.",
+            ]
+            run_id = detail["runs"][0]["id"]
+            assert len((await c2.get(f"/api/runs/{run_id}/events")).json()) >= 3
 
 
 async def test_runs_unknown_404(client: AsyncClient) -> None:
@@ -216,14 +236,21 @@ async def test_runs_unknown_404(client: AsyncClient) -> None:
     assert (await client.get(f"/api/runs/{missing}/events")).status_code == 404
 
 
-async def test_mark_interrupted_runs(client: AsyncClient, session: AsyncSession) -> None:
-    agent = await create_agent(client)
-    conv = await create_conversation(client, agent["id"])
-    run = Run(conversation_id=uuid.UUID(conv["id"]), agent_id=uuid.UUID(agent["id"]))
+async def test_mark_interrupted_runs(session: AsyncSession) -> None:
+    """Startup reaping (no worker running): active runs become failed with a terminal event."""
+    agent = Agent(name="A", provider="fake", model="tools:1b")
+    session.add(agent)
+    await session.flush()
+    conv = Conversation(agent_id=agent.id)
+    session.add(conv)
+    await session.flush()
+    run = Run(conversation_id=conv.id, agent_id=agent.id, status="running")
     session.add(run)
     await session.commit()
 
     assert await mark_interrupted_runs(session) == 1
-    refreshed = (await client.get(f"/api/runs/{run.id}")).json()
-    assert refreshed["status"] == "failed"
-    assert refreshed["error"] == "Interrupted by a server restart"
+    await session.refresh(run)
+    assert run.status == "failed"
+    assert run.error == "Interrupted by a server restart"
+    (event,) = await list_run_events(session, run.id)
+    assert event.type == "run.failed" and event.payload["code"] == "internal_error"

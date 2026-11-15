@@ -1,4 +1,4 @@
-"""Run orchestration: prepare a run from DB state, start it, persist its results."""
+"""Run use cases: queue a run, rebuild it for a worker, persist its results, cancel it."""
 
 import logging
 import uuid
@@ -8,11 +8,11 @@ from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.db.models import Agent, Conversation, Message, Run, RunEvent
-from app.runtime.events import AgentEvent
+from app.db.models import ACTIVE_RUN_STATUSES, Agent, Conversation, Message, Run, RunEvent
 from app.runtime.executor import AgentRun
 from app.runtime.providers.registry import ProviderRegistry, UnknownProviderError
 from app.runtime.types import (
@@ -23,9 +23,8 @@ from app.runtime.types import (
     SkillContent,
     ToolGrant,
 )
-from app.services import agent_service, conversation_service
+from app.services import agent_service, conversation_service, run_queue
 from app.services.errors import ConflictError, DomainValidationError, NotFoundError
-from app.services.run_manager import ActiveRun, RunManager
 from app.tools.base import ToolContext
 from app.tools.registry import ToolRegistry
 
@@ -124,46 +123,6 @@ def _to_row(msg: BaseMessage, conversation_id: uuid.UUID, run_id: uuid.UUID, seq
 # ---- persistence --------------------------------------------------------------------
 
 
-class DbRunRecorder:
-    """Writes a run's events and final result. Uses its own sessions because it runs in
-    the background run task, after the request that started the run has finished."""
-
-    def __init__(
-        self, session_factory: SessionFactory, run_id: uuid.UUID, conversation_id: uuid.UUID
-    ) -> None:
-        self.session_factory = session_factory
-        self.run_id = run_id
-        self.conversation_id = conversation_id
-
-    async def record_event(self, event: AgentEvent) -> None:
-        payload = event.model_dump(mode="json", exclude={"run_id", "seq", "ts", "type"})
-        async with self.session_factory() as session:
-            session.add(
-                RunEvent(run_id=self.run_id, seq=event.seq, type=event.type, payload=payload)
-            )
-            await session.commit()
-
-    async def finish(self, result: RunResult) -> None:
-        async with self.session_factory() as session:
-            run = await session.get(Run, self.run_id)
-            if run is None:  # conversation/agent deleted mid-run
-                return
-            next_seq = await _next_seq(session, self.conversation_id)
-            for offset, msg in enumerate(_with_answered_tool_calls(result.new_messages)):
-                session.add(_to_row(msg, self.conversation_id, self.run_id, next_seq + offset))
-            run.status = result.status if result.status != "running" else "failed"
-            run.tool_call_count = result.tool_call_count
-            run.usage = result.usage
-            run.error = result.error
-            run.finished_at = func.now()
-            await session.execute(
-                update(Conversation)
-                .where(Conversation.id == self.conversation_id)
-                .values(updated_at=func.now())
-            )
-            await session.commit()
-
-
 async def _next_seq(session: AsyncSession, conversation_id: uuid.UUID) -> int:
     current = await session.scalar(
         select(func.max(Message.seq)).where(Message.conversation_id == conversation_id)
@@ -171,7 +130,33 @@ async def _next_seq(session: AsyncSession, conversation_id: uuid.UUID) -> int:
     return (current or 0) + 1
 
 
+async def apply_result(session: AsyncSession, run: Run, result: RunResult) -> None:
+    """Write a finished run's messages and final status (caller commits, together with
+    the terminal event, so subscribers never see the end before the messages)."""
+    next_seq = await _next_seq(session, run.conversation_id)
+    for offset, msg in enumerate(_with_answered_tool_calls(result.new_messages)):
+        session.add(_to_row(msg, run.conversation_id, run.id, next_seq + offset))
+    run.status = result.status if result.status != "running" else "failed"
+    run.tool_call_count = result.tool_call_count
+    run.usage = result.usage
+    run.error = result.error
+    run.finished_at = func.now()
+    await session.execute(
+        update(Conversation)
+        .where(Conversation.id == run.conversation_id)
+        .values(updated_at=func.now())
+    )
+
+
 # ---- use cases ----------------------------------------------------------------------
+
+
+async def active_run_id(session: AsyncSession, conversation_id: uuid.UUID) -> uuid.UUID | None:
+    return await session.scalar(
+        select(Run.id).where(
+            Run.conversation_id == conversation_id, Run.status.in_(ACTIVE_RUN_STATUSES)
+        )
+    )
 
 
 async def start_run(
@@ -179,27 +164,21 @@ async def start_run(
     conversation_id: uuid.UUID,
     content: str,
     *,
-    settings: Settings,
     providers: ProviderRegistry,
-    tools: ToolRegistry,
-    manager: RunManager,
-    session_factory: SessionFactory,
-) -> ActiveRun:
-    """Validate, persist the user message + run row, and start the run in the background.
+) -> Run:
+    """Validate, persist the user message + a queued run, and wake a worker.
     Raises domain errors (404/409/422) before anything streams."""
-    # In-memory check first: a busy conversation is rejected without touching the DB.
-    if manager.has_active_run(conversation_id):
-        raise ConflictError("A run is already in progress for this conversation")
     conversation = await conversation_service.get_conversation(session, conversation_id)
+    if await active_run_id(session, conversation_id) is not None:
+        raise ConflictError("A run is already in progress for this conversation")
 
     agent = await agent_service.get_agent(session, conversation.agent_id)
     config = to_agent_config(agent)
     try:
-        provider = providers.get(config.provider)
+        providers.get(config.provider)
     except UnknownProviderError:
         raise DomainValidationError(f"Unknown provider: '{config.provider}'") from None
 
-    history = to_langchain(await conversation_service.list_messages(session, conversation_id))
     user_message = Message(
         conversation_id=conversation_id,
         seq=await _next_seq(session, conversation_id),
@@ -209,24 +188,46 @@ async def start_run(
     run = Run(
         conversation_id=conversation_id,
         agent_id=agent.id,
-        status="running",
+        status="queued",
         agent_snapshot=config.model_dump(mode="json"),
     )
     session.add_all([user_message, run])
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError:  # another request queued a run concurrently
+        await session.rollback()
+        raise ConflictError("A run is already in progress for this conversation") from None
     user_message.run_id = run.id
     if conversation.title == conversation_service.DEFAULT_TITLE:
         conversation.title = content.strip().splitlines()[0][:TITLE_MAX] or conversation.title
     conversation.updated_at = func.now()
+    await run_queue.wake_workers(session)
     await session.commit()
+    return run
 
-    agent_run = AgentRun(
+
+async def prepare_agent_run(
+    session: AsyncSession,
+    run: Run,
+    *,
+    settings: Settings,
+    providers: ProviderRegistry,
+    tools: ToolRegistry,
+) -> AgentRun:
+    """Rebuild a claimed run's runtime inputs from the database (worker side)."""
+    config = AgentConfig.model_validate(run.agent_snapshot)
+    provider = providers.get(config.provider)
+    messages = await conversation_service.list_messages(session, run.conversation_id)
+    user_message_id = next(
+        (m.id for m in messages if m.run_id == run.id and m.role == "user"), None
+    )
+    return AgentRun(
         RunRequest(
             run_id=run.id,
             config=config,
-            history=[*history, HumanMessage(content, id=str(user_message.id))],
-            conversation_id=conversation_id,
-            user_message_id=user_message.id,
+            history=to_langchain(messages),
+            conversation_id=run.conversation_id,
+            user_message_id=user_message_id,
         ),
         provider,
         tools,
@@ -237,8 +238,6 @@ async def start_run(
         ),
         ToolContext(workspace_dir=settings.workspace_dir),
     )
-    recorder = DbRunRecorder(session_factory, run.id, conversation_id)
-    return manager.start(run.id, conversation_id, agent_run, recorder)
 
 
 async def get_run(session: AsyncSession, run_id: uuid.UUID) -> Run:
@@ -248,25 +247,26 @@ async def get_run(session: AsyncSession, run_id: uuid.UUID) -> Run:
     return run
 
 
-async def list_run_events(session: AsyncSession, run_id: uuid.UUID) -> Sequence[RunEvent]:
+async def list_run_events(
+    session: AsyncSession, run_id: uuid.UUID, after_seq: int = 0
+) -> Sequence[RunEvent]:
     await get_run(session, run_id)
-    stmt = select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq)
+    stmt = (
+        select(RunEvent)
+        .where(RunEvent.run_id == run_id, RunEvent.seq > after_seq)
+        .order_by(RunEvent.seq)
+    )
     return (await session.scalars(stmt)).all()
 
 
-async def cancel_run(session: AsyncSession, run_id: uuid.UUID, manager: RunManager) -> None:
-    if manager.cancel(run_id):  # no DB access while the run task may be writing
+async def cancel_run(session: AsyncSession, run_id: uuid.UUID) -> None:
+    if await run_queue.request_cancel(session, run_id):
         return
     run = await get_run(session, run_id)
     raise ConflictError(f"Run is not active (status: {run.status})")
 
 
 async def mark_interrupted_runs(session: AsyncSession) -> int:
-    """Runs left 'running' by a previous process can never finish: mark them failed."""
-    result = await session.execute(
-        update(Run)
-        .where(Run.status == "running")
-        .values(status="failed", error="Interrupted by a server restart", finished_at=func.now())
-    )
-    await session.commit()
-    return int(getattr(result, "rowcount", 0) or 0)
+    """Fail every run left 'running' (single-process startup / tests).
+    Multi-process deployments rely on heartbeat-based reaping in the worker instead."""
+    return await run_queue.reap_stale_runs(session, stale_after_s=None)

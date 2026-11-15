@@ -1,7 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
-import { api, errorMessage, streamMessage } from "../../api/client";
+import { api, errorMessage, followRun, streamMessage } from "../../api/client";
+import type { AgentEvent } from "../../api/events";
 import { TERMINAL_EVENTS } from "../../api/events";
 import { keys } from "../../api/queries";
 import { initialRunState, runReducer } from "../../lib/runReducer";
@@ -12,10 +13,12 @@ export interface PendingMessage {
 }
 
 /**
- * Drives one streamed run at a time: sends the message, reduces SSE events into run
- * state, and refreshes the persisted conversation when the run ends.
+ * Drives one streamed run at a time: sends the message (or reattaches to a run that is
+ * still active on the server), reduces SSE events into run state, and refreshes the
+ * persisted conversation when the run ends.
  *
- * Leaving the page aborts the request; the server treats the disconnect as a cancel.
+ * Runs are durable on the server: leaving the page only stops following the run. Use
+ * `cancel()` to stop it.
  */
 export function useRunStream() {
   const queryClient = useQueryClient();
@@ -28,19 +31,24 @@ export function useRunStream() {
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  const start = useCallback(
-    async (conversationId: string, content: string) => {
+  const consume = useCallback(
+    async (
+      conversationId: string,
+      content: string,
+      open: (signal: AbortSignal) => AsyncGenerator<AgentEvent>,
+      knownRunId: string | null,
+    ) => {
       if (abortRef.current) return; // one run at a time
       const controller = new AbortController();
       abortRef.current = controller;
-      runIdRef.current = null;
+      runIdRef.current = knownRunId;
       setSendError(null);
       setPending({ conversationId, content });
       dispatch({ type: "local.start" });
 
       let sawTerminal = false;
       try {
-        for await (const event of streamMessage(conversationId, content, controller.signal)) {
+        for await (const event of open(controller.signal)) {
           if (event.type === "run.started") runIdRef.current = event.run_id;
           if (TERMINAL_EVENTS.has(event.type)) sawTerminal = true;
           dispatch(event);
@@ -69,6 +77,19 @@ export function useRunStream() {
     [queryClient],
   );
 
+  const start = useCallback(
+    (conversationId: string, content: string) =>
+      consume(conversationId, content, (signal) => streamMessage(conversationId, content, signal), null),
+    [consume],
+  );
+
+  /** Reattach to a run that is queued or running on the server (e.g. after a reload). */
+  const attach = useCallback(
+    (conversationId: string, runId: string, content: string) =>
+      consume(conversationId, content, (signal) => followRun(runId, signal), runId),
+    [consume],
+  );
+
   const cancel = useCallback(async () => {
     const runId = runIdRef.current;
     if (runId) {
@@ -76,7 +97,7 @@ export function useRunStream() {
         await api.cancelRun(runId); // the stream then ends with run.cancelled
         return;
       } catch {
-        // Fall through: closing the connection also cancels the run.
+        // Fall through: stop following (the run id is unknown or the request failed).
       }
     }
     abortRef.current?.abort();
@@ -89,6 +110,7 @@ export function useRunStream() {
     sendError,
     clearSendError: () => setSendError(null),
     start,
+    attach,
     cancel,
   };
 }

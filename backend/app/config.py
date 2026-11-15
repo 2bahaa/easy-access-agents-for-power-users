@@ -27,6 +27,16 @@ class Settings(BaseSettings):
     run_timeout_cap_s: int = Field(default=300, ge=5)
     tool_timeout_s: int = Field(default=10, ge=1)
 
+    # Durable run execution (Postgres job queue). The API process embeds a worker by default;
+    # set RUN_WORKER_EMBEDDED=false and run `python -m app.worker` to execute runs separately.
+    run_worker_embedded: bool = True
+    run_worker_concurrency: int = Field(default=4, ge=1, le=64)
+    run_heartbeat_s: float = Field(default=5.0, gt=0)
+    # A running run whose worker has not sent a heartbeat for this long is marked failed.
+    run_stale_after_s: float = Field(default=30.0, gt=0)
+    # Fallback poll interval for queued runs (NOTIFY wakes the worker immediately).
+    run_poll_interval_s: float = Field(default=2.0, gt=0)
+
     # Comma-separated list of allowed browser origins.
     cors_origins: str = "http://localhost:5173"
 
@@ -34,6 +44,14 @@ class Settings(BaseSettings):
     @classmethod
     def _resolve_relative_to_backend(cls, v: Path) -> Path:
         return v if v.is_absolute() else (BACKEND_DIR / v).resolve()
+
+    @property
+    def listen_dsn(self) -> str:
+        """Plain asyncpg DSN (no SQLAlchemy driver suffix) for LISTEN/NOTIFY connections."""
+        from sqlalchemy import make_url
+
+        url = make_url(self.database_url).set(drivername="postgresql")
+        return url.render_as_string(hide_password=False)
 
     @property
     def cors_origin_list(self) -> list[str]:

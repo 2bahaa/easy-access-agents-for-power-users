@@ -44,7 +44,7 @@ plugins = ["pydantic.mypy"]
 exclude = ["scripts/", "alembic/"]
 
 [[tool.mypy.overrides]]
-module = ["langchain_ollama.*", "langgraph.*"]
+module = ["langchain_ollama.*", "langgraph.*", "asyncpg", "asyncpg.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

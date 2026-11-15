@@ -1,5 +1,5 @@
 import { Activity, ArrowLeft, History, Plus, Settings2, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
 import { errorMessage } from "../../api/client";
@@ -53,6 +53,20 @@ export function ChatPage() {
   const [selection, setSelection] = useState<{ conversationId?: string; runId: string } | null>(null);
   const [panel, setPanel] = useState<"history" | "timeline" | null>(null);
   const [toDelete, setToDelete] = useState<ConversationSummary | null>(null);
+
+  // Reattach to a run that is still active on the server (page reload, navigation back,
+  // another tab started it). Each run is attached at most once per page instance.
+  const attachedRef = useRef(new Set<string>());
+  const lastRun = conversation.data?.runs.at(-1);
+  const { attach, pending } = run;
+  useEffect(() => {
+    if (!conversationId || pending || !lastRun) return;
+    if (lastRun.status !== "queued" && lastRun.status !== "running") return;
+    if (attachedRef.current.has(lastRun.id)) return;
+    attachedRef.current.add(lastRun.id);
+    const prompt = conversation.data?.messages.find((m) => m.role === "user" && m.run_id === lastRun.id);
+    void attach(conversationId, lastRun.id, prompt?.content ?? "");
+  }, [attach, conversation.data, conversationId, lastRun, pending]);
 
   const liveHere = !!run.pending && run.pending.conversationId === conversationId;
   const liveRunId = liveHere ? run.state.runId : null;

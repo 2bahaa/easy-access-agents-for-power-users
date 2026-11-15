@@ -29,7 +29,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    environment:
+    environment: &backend-env
       # Explicit values (not the dev .env): inside Docker the DB host is "db".
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-eaa}:${POSTGRES_PASSWORD:-change-me}@db:5432/${POSTGRES_DB:-eaa}
       OLLAMA_BASE_URL: ${DOCKER_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
@@ -38,6 +38,8 @@ services:
       RUN_TIMEOUT_CAP_S: ${RUN_TIMEOUT_CAP_S:-300}
       TOOL_TIMEOUT_S: ${TOOL_TIMEOUT_S:-10}
       CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-3000}
+      # Runs execute in the separate "worker" service, so they survive API restarts.
+      RUN_WORKER_EMBEDDED: "false"
     volumes:
       # Read-only: the file_reader tool can never modify host files.
       - ./workspace:/workspace:ro
@@ -47,6 +49,24 @@ services:
     ports:
       # API docs at http://localhost:8001/docs; 8001 avoids clashing with a local dev API on 8000.
       - "127.0.0.1:${BACKEND_PORT:-8001}:8000"
+
+  worker:
+    # Same image as the API; executes queued runs (python -m app.worker).
+    build: ./backend
+    restart: unless-stopped
+    entrypoint: ["python", "-m", "app.worker"]
+    depends_on:
+      backend:
+        condition: service_healthy  # migrations have been applied
+    environment:
+      <<: *backend-env
+      RUN_WORKER_CONCURRENCY: ${RUN_WORKER_CONCURRENCY:-4}
+    volumes:
+      - ./workspace:/workspace:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      disable: true
 
   frontend:
     build: ./frontend

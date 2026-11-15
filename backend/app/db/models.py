@@ -9,12 +9,14 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     MetaData,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -114,8 +116,21 @@ class Conversation(TimestampMixin, Base):
     title: Mapped[str] = mapped_column(String(200), default="New conversation")
 
 
+ACTIVE_RUN_STATUSES = ("queued", "running")
+
+
 class Run(Base):
     __tablename__ = "runs"
+    __table_args__ = (
+        # At most one active run per conversation, enforced by the database (any process).
+        Index(
+            "uq_runs_active_conversation",
+            "conversation_id",
+            unique=True,
+            postgresql_where=text("status IN ('queued', 'running')"),
+        ),
+        Index("ix_runs_queued", "started_at", postgresql_where=text("status = 'queued'")),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     conversation_id: Mapped[uuid.UUID] = mapped_column(
@@ -124,13 +139,19 @@ class Run(Base):
     agent_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("agents.id", ondelete="CASCADE"), index=True
     )
-    status: Mapped[str] = mapped_column(String(32), default="running")
+    status: Mapped[str] = mapped_column(String(32), default="queued")
     agent_snapshot: Mapped[dict[str, Any]] = mapped_column(default=dict)
     tool_call_count: Mapped[int] = mapped_column(Integer, default=0)
     usage: Mapped[dict[str, Any]] = mapped_column(default=dict)
     error: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Durable execution bookkeeping (see services/run_queue.py).
+    cancel_requested: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
+    worker_id: Mapped[str | None] = mapped_column(String(100))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Message(Base):
