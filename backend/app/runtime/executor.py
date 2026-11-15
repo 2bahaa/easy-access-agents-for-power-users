@@ -184,15 +184,26 @@ class AgentRun:
         if bindable:
             model = model.bind_tools(self.tool_registry.function_schemas(bindable))
 
-        graph = build_graph(
-            model,
-            compose_system_prompt(cfg.system_prompt, cfg.skills),
-            ToolNode(self.tool_registry, cfg.tools, self.limits, self.tool_ctx),
-        )
+        tool_node = ToolNode(self.tool_registry, cfg.tools, self.limits, self.tool_ctx)
+        graph = build_graph(model, compose_system_prompt(cfg.system_prompt, cfg.skills), tool_node)
+
+        history = list(self.request.history)
+        resume = self.request.resume
+        last_ai = next((m for m in reversed(history) if isinstance(m, AIMessage)), None)
+        if resume is not None and last_ai is not None:
+            answered = await tool_node.resume(
+                last_ai,
+                resume.approved,
+                resume.rejected,
+                lambda ev: self._emit(ev[0], **ev[1]),
+            )
+            history.extend(answered)
+            self.result.new_messages.extend(answered)
+            self.result.tool_call_count = len(resume.approved)
 
         stop_reason: str | None = None
         async for chunk in graph.astream(
-            {"messages": list(self.request.history), "tool_call_count": 0},
+            {"messages": history, "tool_call_count": self.result.tool_call_count},
             stream_mode=["messages", "custom", "updates"],
             version="v2",
             config={"recursion_limit": self.limits.recursion_limit},
@@ -212,6 +223,14 @@ class AgentRun:
                 "limit_exceeded",
                 f"Tool call limit reached ({self.limits.max_tool_calls})",
             )
+        if stop_reason == "approval_required":
+            self.result.status = "waiting_approval"
+            self.result.pending_approvals = list(tool_node.pending_approvals)
+            self._emit(
+                "run.waiting_approval",
+                pending=[p["call_id"] for p in tool_node.pending_approvals],
+            )
+            return
         self.result.status = "completed"
         self._emit(
             "run.completed",

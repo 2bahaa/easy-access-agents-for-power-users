@@ -16,6 +16,8 @@ export interface ModelParams {
 export interface ToolSelection {
   name: string;
   config: Record<string, unknown>;
+  /** Every call is held for human approval. */
+  requires_approval?: boolean;
 }
 
 export interface AgentWrite {
@@ -193,7 +195,7 @@ export interface Message {
   created_at: string;
 }
 
-export type RunStatus = "queued" | "running" | "completed" | "failed" | "cancelled" | "limit_exceeded" | "timeout";
+export type RunStatus = "queued" | "running" | "waiting_approval" | "resumed" | "completed" | "failed" | "cancelled" | "limit_exceeded" | "timeout";
 
 export interface Run {
   id: string;
@@ -396,4 +398,30 @@ export interface CustomTool extends Omit<CustomToolWrite, "headers"> {
   tool_name: string;
   header_keys: string[];
   updated_at: string;
+}
+
+// ---- approvals ----
+
+export interface Approval {
+  id: string;
+  run_id: string;
+  conversation_id: string;
+  agent_id: string;
+  call_id: string;
+  tool_name: string;
+  args: Record<string, unknown>;
+  status: "pending" | "approved" | "rejected" | "expired" | "cancelled";
+  edited_args: Record<string, unknown> | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  note: string;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface ApprovalPolicy {
+  id: string;
+  tool_pattern: string;
+  agent_id: string | null;
+  created_at: string;
 }

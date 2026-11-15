@@ -25,6 +25,8 @@ export const keys = {
   conversation: (id: string) => ["conversation", id] as const,
   runEvents: (runId: string) => ["runs", runId, "events"] as const,
   members: ["members"] as const,
+  approvals: (params: Record<string, string | undefined>) => ["approvals", params] as const,
+  approvalPolicies: ["approval-policies"] as const,
   mcpServers: ["mcp-servers"] as const,
   customTools: ["custom-tools"] as const,
   agentVersions: (id: string) => ["agents", id, "versions"] as const,
@@ -347,3 +349,43 @@ export const useToggleMcpTool = () =>
 export const useCreateCustomTool = () =>
   useToolsMutation((data: CustomToolWrite) => api.createCustomTool(data), keys.customTools);
 export const useDeleteCustomTool = () => useToolsMutation((id: string) => api.deleteCustomTool(id), keys.customTools);
+
+// ---- approvals ----
+
+export const useApprovals = (params: { status?: string; conversation_id?: string } = {}, enabled = true) =>
+  useQuery({
+    queryKey: keys.approvals(params),
+    queryFn: () => api.listApprovals(params),
+    enabled,
+    refetchInterval: 15_000,
+  });
+
+export function useDecideApproval() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...decision }: { id: string; approve: boolean; args?: Record<string, unknown>; note?: string }) =>
+      api.decideApproval(id, decision),
+    onSuccess: (result) => {
+      void qc.invalidateQueries({ queryKey: ["approvals"] });
+      void qc.invalidateQueries({ queryKey: keys.conversation(result.approval.conversation_id) });
+    },
+  });
+}
+
+export const useApprovalPolicies = () => useQuery({ queryKey: keys.approvalPolicies, queryFn: api.listApprovalPolicies });
+
+export function useCreateApprovalPolicy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ pattern, agentId }: { pattern: string; agentId: string | null }) => api.createApprovalPolicy(pattern, agentId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.approvalPolicies }),
+  });
+}
+
+export function useDeleteApprovalPolicy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteApprovalPolicy(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.approvalPolicies }),
+  });
+}

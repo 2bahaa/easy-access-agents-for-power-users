@@ -33,6 +33,9 @@ export function ToolPicker({ tools, value, onChange, disabledReason, warning }: 
   const setConfig = (name: string, config: Record<string, unknown>) =>
     onChange(value.map((t) => (t.name === name ? { ...t, config } : t)));
 
+  const setApproval = (name: string, requires_approval: boolean) =>
+    onChange(value.map((t) => (t.name === name ? { ...t, requires_approval } : t)));
+
   return (
     <div className="space-y-3">
       {(disabledReason ?? warning) && (
@@ -88,6 +91,16 @@ export function ToolPicker({ tools, value, onChange, disabledReason, warning }: 
                   onChange={(on) => toggle(tool, on)}
                 />
               </div>
+              {enabled && (
+                <label className="flex items-center gap-2 border-t border-brand-500/15 px-3 py-2 text-xs text-muted">
+                  <input
+                    type="checkbox"
+                    checked={!!current.requires_approval}
+                    onChange={(e) => setApproval(tool.name, e.target.checked)}
+                  />
+                  Require human approval before each call
+                </label>
+              )}
               {enabled && hasFields(tool.config_schema) && (
                 <div className="animate-fade-in border-t border-brand-500/15 px-3 pt-3 pb-3.5">
                   <SchemaFields

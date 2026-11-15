@@ -83,6 +83,20 @@ export interface RunCancelled extends EventBase {
   type: "run.cancelled";
 }
 
+/** A tool call was held for human approval (not executed). */
+export interface ApprovalRequested extends EventBase {
+  type: "approval.requested";
+  call_id: string;
+  tool: string;
+  args: Record<string, unknown>;
+}
+
+/** Terminal: the run paused until humans decide; a continuation run follows. */
+export interface RunWaitingApproval extends EventBase {
+  type: "run.waiting_approval";
+  pending: string[];
+}
+
 export type AgentEvent =
   | RunStarted
   | ReasoningDelta
@@ -91,12 +105,15 @@ export type AgentEvent =
   | ToolCallStarted
   | ToolCallCompleted
   | ToolCallFailed
+  | ApprovalRequested
   | RunCompleted
   | RunFailed
-  | RunCancelled;
+  | RunCancelled
+  | RunWaitingApproval;
 
 export const TERMINAL_EVENTS = new Set<AgentEvent["type"]>([
   "run.completed",
   "run.failed",
   "run.cancelled",
+  "run.waiting_approval",
 ]);

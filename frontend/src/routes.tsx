@@ -7,6 +7,7 @@ import { NotFoundPage } from "./features/NotFoundPage";
 import { OverviewPage } from "./features/overview/OverviewPage";
 import { SkillsPage } from "./features/skills/SkillsPage";
 import { ToolsPage } from "./features/tools/ToolsPage";
+import { ApprovalsPage } from "./features/approvals/ApprovalsPage";
 import { LoginPage, RegisterPage } from "./features/auth/AuthPages";
 import { RequireAuth } from "./features/auth/RequireAuth";
 import { ProvidersPage } from "./features/providers/ProvidersPage";
@@ -34,6 +35,7 @@ export const routes: RouteObject[] = [
       { path: "skills", element: <SkillsPage /> },
       { path: "skills/:skillId", element: <SkillsPage /> },
       { path: "tools", element: <ToolsPage /> },
+      { path: "approvals", element: <ApprovalsPage /> },
       { path: "providers", element: <ProvidersPage /> },
       { path: "settings", element: <SettingsPage /> },
       { path: "*", element: <NotFoundPage /> },

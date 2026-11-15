@@ -32,7 +32,10 @@ def to_read(agent: Agent) -> AgentRead:
         model_params=ModelParams.model_validate(agent.model_params),
         system_prompt=agent.system_prompt,
         skills=[SkillRef.model_validate(link.skill) for link in agent.skill_links],
-        tools=[ToolSelection(name=t.tool_name, config=t.config) for t in agent.tool_links],
+        tools=[
+            ToolSelection(name=t.tool_name, config=t.config, requires_approval=t.requires_approval)
+            for t in agent.tool_links
+        ],
         max_tool_calls=agent.max_tool_calls,
         run_timeout_s=agent.run_timeout_s,
         created_at=agent.created_at,
@@ -179,10 +182,12 @@ def _apply(
     agent.skill_links = skill_links
 
     old_tools = {t.tool_name: t for t in agent.tool_links}
+    approval = {sel.name: sel.requires_approval for sel in data.tools}
     tool_links = []
     for name, config in tool_configs.items():
         tool = old_tools.get(name) or AgentTool(tool_name=name)
         tool.config = config
+        tool.requires_approval = approval.get(name, False)
         tool_links.append(tool)
     agent.tool_links = tool_links
 

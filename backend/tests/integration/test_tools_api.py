@@ -39,8 +39,8 @@ async def test_tool_config_is_normalized_on_save(client: AsyncClient) -> None:
     resp = await client.post("/api/agents", json=agent_payload(tools))
     assert resp.status_code == 201, resp.text
     assert resp.json()["tools"] == [
-        {"name": "calculator", "config": {}},
-        {"name": "file_reader", "config": {"subdir": "notes"}},
+        {"name": "calculator", "config": {}, "requires_approval": False},
+        {"name": "file_reader", "config": {"subdir": "notes"}, "requires_approval": False},
     ]
 
 
@@ -49,4 +49,4 @@ async def test_update_with_unknown_tool_leaves_agent_unchanged(client: AsyncClie
     resp = await client.put(f"/api/agents/{agent['id']}", json=agent_payload([{"name": "shell"}]))
     assert resp.status_code == 422
     current = (await client.get(f"/api/agents/{agent['id']}")).json()
-    assert current["tools"] == [{"name": "calculator", "config": {}}]
+    assert current["tools"] == [{"name": "calculator", "config": {}, "requires_approval": False}]

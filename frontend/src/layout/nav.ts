@@ -1,4 +1,4 @@
-import { BookOpen, Bot, Building2, LayoutDashboard, Plug, Wrench, type LucideIcon } from "lucide-react";
+import { BookOpen, Bot, Building2, LayoutDashboard, Plug, ShieldCheck, Wrench, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   to: string;
@@ -26,6 +26,10 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/skills", label: "Skills", icon: BookOpen, keywords: "prompts markdown" },
       { to: "/tools", label: "Tools", icon: Wrench, keywords: "calculator file reader" },
     ],
+  },
+  {
+    label: "Run",
+    items: [{ to: "/approvals", label: "Approvals", icon: ShieldCheck, keywords: "review human in the loop pending" }],
   },
   {
     label: "Admin",

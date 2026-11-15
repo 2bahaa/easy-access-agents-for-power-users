@@ -5,6 +5,8 @@ from typing import Any
 
 from httpx import AsyncClient
 
+from app.runtime.events import TERMINAL_TYPES
+
 
 def parse_sse(body: str) -> list[dict[str, Any]]:
     """Parse an SSE body into [{'id', 'event', 'data'}]; comment-only frames are skipped."""
@@ -53,8 +55,6 @@ async def send_message(
     # Protocol invariants.
     assert [int(e["id"]) for e in events] == list(range(1, len(events) + 1))
     assert all(e["event"] == e["data"]["type"] for e in events)
-    terminals = [
-        e for e in events if e["event"] in {"run.completed", "run.failed", "run.cancelled"}
-    ]
+    terminals = [e for e in events if e["event"] in TERMINAL_TYPES]
     assert len(terminals) == 1 and events[-1] is terminals[0]
     return events

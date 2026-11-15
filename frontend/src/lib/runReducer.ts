@@ -18,10 +18,11 @@ export type TimelineItem =
       durationMs?: number;
     }
   | { kind: "message"; seq: number; messageId: string; content: string }
+  | { kind: "approval"; seq: number; callId: string; tool: string; args: Record<string, unknown> }
   | {
       kind: "end";
       seq: number;
-      status: "completed" | "failed" | "cancelled";
+      status: "completed" | "failed" | "cancelled" | "waiting_approval";
       code?: RunFailureCode | "connection";
       message?: string;
       usage?: Record<string, number>;
@@ -33,7 +34,7 @@ export type ToolItem = Extract<TimelineItem, { kind: "tool" }>;
 
 export interface RunState {
   runId: string | null;
-  status: "idle" | "streaming" | "completed" | "failed" | "cancelled";
+  status: "idle" | "streaming" | "completed" | "failed" | "cancelled" | "waiting_approval";
   /** Assistant text streamed since the last completed message. */
   draft: string;
   items: TimelineItem[];
@@ -152,6 +153,22 @@ export function runReducer(state: RunState, action: RunAction): RunState {
           error: action.error,
           errorKind: action.kind,
         }),
+      };
+    case "approval.requested":
+      return {
+        ...state,
+        draft: "",
+        items: [
+          ...state.items,
+          { kind: "approval", seq: action.seq, callId: action.call_id, tool: action.tool, args: action.args },
+        ],
+      };
+    case "run.waiting_approval":
+      return {
+        ...state,
+        status: "waiting_approval",
+        draft: "",
+        items: [...state.items, { kind: "end", seq: action.seq, status: "waiting_approval" }],
       };
     case "run.completed":
       return {

@@ -61,7 +61,11 @@ export function fromAgent(agent: Agent): AgentFormValues {
     think: agent.model_params.think ?? null,
     systemPrompt: agent.system_prompt,
     skillIds: agent.skills.map((s) => s.id),
-    tools: agent.tools.map((t) => ({ name: t.name, config: { ...t.config } })),
+    tools: agent.tools.map((t) => ({
+      name: t.name,
+      config: { ...t.config },
+      ...(t.requires_approval ? { requires_approval: true } : {}),
+    })),
     maxToolCalls: agent.max_tool_calls,
     runTimeoutS: agent.run_timeout_s,
   };

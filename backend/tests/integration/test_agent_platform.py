@@ -237,7 +237,7 @@ async def test_templates(client: AsyncClient, settings: Settings) -> None:
     ids = {t["id"] for t in templates}
     assert {"research-assistant", "calculator-helper"} <= ids
     research = next(t for t in templates if t["id"] == "research-assistant")
-    assert research["tools"] == [{"name": "file_reader", "config": {}}]
+    assert research["tools"] == [{"name": "file_reader", "config": {}, "requires_approval": False}]
     (settings.skills_dir / "tmpl.md").write_text(
         "---\nslug: tmpl\nname: Template\ncategory: writing\ntags: [a, b]\n---\nBody",
         encoding="utf-8",

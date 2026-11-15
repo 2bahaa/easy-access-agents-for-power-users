@@ -24,6 +24,8 @@ class ToolSelection(BaseModel):
 
     name: str = Field(min_length=1, max_length=64)
     config: dict[str, Any] = Field(default_factory=dict)
+    # Hold every call of this tool for human approval.
+    requires_approval: bool = False
 
 
 class AgentWrite(BaseModel):

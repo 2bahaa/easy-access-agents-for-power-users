@@ -42,7 +42,7 @@ async def test_agent_crud_roundtrip(client: AsyncClient) -> None:
     }
     assert agent["connection_id"] is None  # built-in Ollama
     assert [s["slug"] for s in agent["skills"]] == ["first"]
-    assert agent["tools"] == [{"name": "calculator", "config": {}}]
+    assert agent["tools"] == [{"name": "calculator", "config": {}, "requires_approval": False}]
     assert agent["max_tool_calls"] == 8 and agent["run_timeout_s"] == 120
 
     listed = (await client.get("/api/agents")).json()
@@ -74,7 +74,9 @@ async def test_put_replaces_skills_and_tools_in_order(
     body = resp.json()
     assert body["name"] == "Renamed"
     assert [s["slug"] for s in body["skills"]] == ["gamma", "alpha"]
-    assert body["tools"] == [{"name": "file_reader", "config": {"subdir": "notes"}}]
+    assert body["tools"] == [
+        {"name": "file_reader", "config": {"subdir": "notes"}, "requires_approval": False}
+    ]
     assert body["updated_at"] >= agent["updated_at"]
 
     links = await session.scalar(select(func.count()).select_from(AgentSkill))

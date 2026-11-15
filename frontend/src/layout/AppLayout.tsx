@@ -17,7 +17,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 
-import { useHealth } from "../api/queries";
+import { useApprovals, useHealth } from "../api/queries";
 import { Tooltip } from "../components/ui/Tooltip";
 import { cn } from "../lib/cn";
 import { useTheme, type ThemePreference } from "../lib/theme";
@@ -40,6 +40,7 @@ export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const pendingCount = useApprovals({ status: "pending" }).data?.length ?? 0;
   const location = useLocation();
   const [lastPath, setLastPath] = useState(location.pathname);
   if (location.pathname !== lastPath) {
@@ -157,7 +158,18 @@ export function AppLayout() {
                             <span className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-brand-500" />
                           )}
                           <Icon className="size-4 shrink-0" />
-                          <span className={cn(rail && "lg:hidden")}>{label}</span>
+                          <span className={cn("flex-1", rail && "lg:hidden")}>{label}</span>
+                          {to === "/approvals" && pendingCount > 0 && (
+                            <span
+                              aria-label={`${pendingCount} pending`}
+                              className={cn(
+                                "rounded-full bg-warning px-1.5 text-[10px] font-semibold text-white",
+                                rail && "absolute top-1 right-1 lg:block",
+                              )}
+                            >
+                              {pendingCount}
+                            </span>
+                          )}
                         </>
                       )}
                     </NavLink>

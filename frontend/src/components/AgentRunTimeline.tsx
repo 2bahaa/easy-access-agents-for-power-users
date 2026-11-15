@@ -1,15 +1,4 @@
-import {
-  AlertTriangle,
-  Ban,
-  Brain,
-  CheckCircle2,
-  ChevronRight,
-  CircleDot,
-  Loader2,
-  MessageSquare,
-  Play,
-  XCircle,
-} from "lucide-react";
+import { AlertTriangle, Ban, Brain, CheckCircle2, ChevronRight, CircleDot, Loader2, MessageSquare, PauseCircle, Play, ShieldQuestion, XCircle } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { cn } from "../lib/cn";
@@ -92,7 +81,10 @@ function rowIcon(item: TimelineItem): { node: ReactNode; className: string } {
         return { node: <Loader2 className="animate-spin" />, className: "bg-brand-500/10 text-brand-600" };
       if (item.status === "failed") return { node: <XCircle />, className: "bg-red-500/10 text-red-500" };
       return { node: <ToolIcon name={item.tool} />, className: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" };
+    case "approval":
+      return { node: <ShieldQuestion />, className: "bg-warning/10 text-warning" };
     case "end":
+      if (item.status === "waiting_approval") return { node: <PauseCircle />, className: "bg-warning/10 text-warning" };
       if (item.status === "completed")
         return { node: <CheckCircle2 />, className: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" };
       if (item.status === "cancelled") return { node: <Ban />, className: "bg-surface-2 text-muted" };
@@ -144,7 +136,19 @@ function RowBody({ item }: { item: TimelineItem }) {
           )}
         </div>
       );
+    case "approval":
+      return (
+        <div className="rounded-xl border border-warning/30 bg-warning/5 p-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium">{prettyToolName(item.tool)}</span>
+            <Badge tone="warning">needs approval</Badge>
+          </div>
+          <Code label="Arguments">{JSON.stringify(item.args, null, 2)}</Code>
+        </div>
+      );
     case "end":
+      if (item.status === "waiting_approval")
+        return <p className="text-sm font-medium text-warning">Paused — waiting for a human decision</p>;
       if (item.status === "completed") {
         return (
           <div className="text-sm">

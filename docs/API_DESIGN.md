@@ -95,6 +95,17 @@ Save-time checks: unknown tool / invalid tool config / unknown provider / limits
 |---|---|---|
 | GET | `/tools` | `ToolInfo[]`: `{name, description, args_schema, config_schema, timeout_s}` (JSON Schemas) |
 
+### Human approval (V2)
+A tool call requires approval when the agent's tool grant has `requires_approval: true` (`ToolSelection` in `AgentWrite`) or a workspace policy glob matches its name (policies apply to every run, published or draft, and are frozen into the run snapshot). Such a call is **not executed**: the run emits `approval.requested` and ends with the terminal event `run.waiting_approval` (run status `waiting_approval`, which still blocks new messages in the conversation). Every pending call becomes an approval request.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/approvals?status=pending|approved|rejected|expired|cancelled|all&conversation_id=&run_id=` | Workspace-scoped list |
+| POST | `/approvals/{id}/decide` | `{decision: approve|reject, args?, note?}` (editor). `args` replaces the model's arguments (still schema-validated when executed). When the last pending request of a run is decided, the run becomes `resumed` and a **continuation run** (`resume_of`) is queued and returned as `continuation_run_id`; it executes approved calls, answers rejected ones with an error the model sees, and continues the turn. 409 if already decided/expired |
+| GET/POST/DELETE | `/approval-policies` | `{tool_pattern (glob), agent_id?}` (admin) |
+
+Requests expire after `APPROVAL_TTL_S` (default 24 h) and then count as rejected. Cancelling a waiting run cancels its requests. All decisions are audited.
+
 ### MCP servers & custom HTTP tools (V2)
 Tool names exposed to models: `mcp__<server-slug>__<tool>` and `http__<slug>`. Agents grant them like native tools (no per-agent config); grants are validated against the workspace (exists, enabled → else 422). `GET /tools` lists native tools plus the workspace's **enabled** external tools (`source: native|mcp|http`).
 
@@ -166,7 +177,7 @@ The POST-messages endpoint persists the user message, creates a run and streams 
 | GET | `/runs/{id}/stream` | SSE: replays persisted events with `seq` > `Last-Event-ID` header (or `?after=`), then streams live events (including token deltas) until the terminal event. Works for active and finished runs. 404 if unknown |
 | POST | `/runs/{id}/cancel` | 202; a queued run is cancelled immediately, a running one is stopped by its worker; the run ends with `run.cancelled`. 409 if the run is not active, 404 if unknown |
 
-Run `status` values: `queued` (waiting for a worker), `running`, `completed`, `failed`, `cancelled`, `limit_exceeded`, `timeout`.
+Run `status` values: `queued` (waiting for a worker), `running`, `waiting_approval`, `resumed` (a continuation run took over), `completed`, `failed`, `cancelled`, `limit_exceeded`, `timeout`.
 
 ## 4. Streaming event protocol (SSE)
 

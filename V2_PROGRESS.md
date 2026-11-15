@@ -10,8 +10,8 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 | 2b | Auth, users, workspaces, tenancy, audit | done | 84dc4f8 |
 | 3 | Multi-provider | done | a5641fb |
 | 4 | Agent platform (versions, templates) & skills v2 | done | b206514 |
-| 5 | Tools & MCP | done | (this commit) |
-| 6 | Human approval | pending | – |
+| 5 | Tools & MCP | done | 46e5391 |
+| 6 | Human approval | done | (this commit) |
 | 7 | Knowledge & memory | pending | – |
 | 8 | Visual workflows | pending | – |
 | 9 | Multi-agent teams | pending | – |
@@ -86,6 +86,13 @@ Design: `docs/V2_ARCHITECTURE.md` · Baseline: `docs/MVP_BASELINE.md`
 - Studio: Tools page sections for MCP servers (register, discover, schema inspection, enable switches, health) and custom HTTP tools (parameter builder, write-only headers); source badges.
 - New deps (justified): `mcp` (official MCP SDK), `jsonschema` (validating MCP/HTTP tool arguments); dev: `types-jsonschema`.
 - Tests: backend 258 passed / 2 skipped (+20: real MCP server over stdio and Streamable HTTP, enable/disable/revocation, validation/error/timeout paths, registration rules, isolation/RBAC, child-env minimality, HTTP tool request building/SSRF/caps); frontend 26 files / 143 passed (+4). ruff, format, mypy, typecheck, lint, build clean.
+
+### Phase 6 — Human approval
+- Backend-enforced: calls to tools flagged `requires_approval` per agent, or matching a workspace policy glob, are held by the ToolNode (never executed), emitted as `approval.requested`, and the run ends `waiting_approval` (new terminal event `run.waiting_approval`; mirrored in the TS union).
+- Durable without a checkpointer: pending calls are stored as approval requests; when all are decided (approve / approve-with-edited-args / reject / expire), a continuation run (`resume_of`) executes approved calls through the full ToolNode checks, returns rejections to the model, and continues. Waiting runs count as active (one per conversation; migration `0007` updates the partial unique index) and can be cancelled.
+- Only authenticated editors decide (the model cannot); decisions are audited; requests expire (`APPROVAL_TTL_S`); policies are admin-managed.
+- Studio: approval cards (inspect/edit JSON args, note) in the chat and an Approvals inbox (pending, history, policies) with a live nav badge; per-tool "Require human approval" in the Agent Builder; timeline shows held calls and the paused state.
+- Tests: backend 265 passed / 2 skipped (+7: hold/approve/continue, reject with note, edited & invalid args, mixed calls, policies, RBAC/isolation/double-decide, expiry, cancel); frontend 27 files / 149 passed (+6). ruff, format, mypy, typecheck, lint, build clean.
 
 ## Known issues
 - Frontend bundle is 574 kB (minified); route-level code splitting planned with the workflow editor (Phase 8).

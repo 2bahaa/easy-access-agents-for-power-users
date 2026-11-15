@@ -5,14 +5,17 @@ import { Link, useNavigate, useParams } from "react-router";
 import { errorMessage } from "../../api/client";
 import {
   useAgent,
+  useApprovals,
   useConversation,
   useConversations,
   useCreateConversation,
+  useDecideApproval,
   useDeleteConversation,
   useRunEvents,
 } from "../../api/queries";
 import type { Agent, ConversationSummary } from "../../api/types";
 import { AgentChat } from "../../components/AgentChat";
+import { ApprovalCard } from "../../components/ApprovalCard";
 import { AgentRunTimeline } from "../../components/AgentRunTimeline";
 import { Button } from "../../components/ui/Button";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
@@ -23,6 +26,7 @@ import { cn } from "../../lib/cn";
 import { replayRunEvents } from "../../lib/runReducer";
 import { buildTranscript, liveTranscript } from "../../lib/transcript";
 import { AgentAvatar } from "../agents/AgentAvatar";
+import { roleAtLeast, useAuth } from "../auth/auth-context";
 import { ConversationList } from "./ConversationList";
 import { useRunStream } from "./useRunStream";
 
@@ -49,6 +53,10 @@ export function ChatPage() {
   const createConversation = useCreateConversation();
   const deleteConversation = useDeleteConversation(agentId);
   const run = useRunStream();
+  const { role } = useAuth();
+  const canDecide = roleAtLeast(role, "editor");
+  const pendingApprovals = useApprovals({ status: "pending", conversation_id: conversationId }, !!conversationId);
+  const decide = useDecideApproval();
 
   const [selection, setSelection] = useState<{ conversationId?: string; runId: string } | null>(null);
   const [panel, setPanel] = useState<"history" | "timeline" | null>(null);
@@ -227,6 +235,29 @@ export function ChatPage() {
                 </Link>
               </div>
             ) : (
+              <div className="flex h-full min-h-0 flex-col">
+              {conversationId && pendingApprovals.data && pendingApprovals.data.length > 0 && (
+                <div className="space-y-3 border-b border-line p-4" aria-label="Pending approvals">
+                  {pendingApprovals.data.map((a) => (
+                    <ApprovalCard
+                      key={a.id}
+                      approval={a}
+                      busy={decide.isPending && decide.variables?.id === a.id}
+                      disabled={!canDecide}
+                      onDecide={(d) =>
+                        decide.mutate(
+                          { id: a.id, ...d },
+                          {
+                            onError: (error) =>
+                              toast.push({ tone: "error", title: "Decision failed", description: errorMessage(error) }),
+                          },
+                        )
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+              <div className="min-h-0 flex-1">
               <AgentChat
                 items={items}
                 draft={liveHere && run.state.status === "streaming" ? run.state.draft : null}
@@ -245,6 +276,8 @@ export function ChatPage() {
                 loading={!!conversationId && conversation.isPending}
                 disabledReason={agent.isPending ? "Loading agent…" : undefined}
               />
+              </div>
+              </div>
             )}
           </div>
         </section>

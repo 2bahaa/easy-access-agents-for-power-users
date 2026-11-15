@@ -23,6 +23,8 @@ class ToolGrant(BaseModel):
 
     name: str
     config: dict[str, Any] = Field(default_factory=dict)
+    # Calls are held for human approval (per-agent flag or a workspace policy).
+    requires_approval: bool = False
 
 
 class AgentConfig(BaseModel):
@@ -53,15 +55,26 @@ class RuntimeCaps:
 
 
 @dataclass(frozen=True)
+class ResumeDecisions:
+    """Human decisions for tool calls a previous run paused on."""
+
+    approved: dict[str, dict[str, Any]] = field(default_factory=dict)  # call_id -> args
+    rejected: dict[str, str] = field(default_factory=dict)  # call_id -> reason
+
+
+@dataclass(frozen=True)
 class RunRequest:
     run_id: uuid.UUID
     config: AgentConfig
     history: list[BaseMessage]  # prior conversation + the new user message
     conversation_id: uuid.UUID | None = None
     user_message_id: uuid.UUID | None = None
+    resume: ResumeDecisions | None = None  # continuation of a run that awaited approval
 
 
-RunStatus = Literal["running", "completed", "failed", "cancelled", "limit_exceeded", "timeout"]
+RunStatus = Literal[
+    "running", "completed", "failed", "cancelled", "limit_exceeded", "timeout", "waiting_approval"
+]
 
 
 @dataclass
@@ -71,3 +84,5 @@ class RunResult:
     usage: dict[str, int] = field(default_factory=dict)
     error: str | None = None
     new_messages: list[BaseMessage] = field(default_factory=list)
+    # Tool calls held for approval: {"call_id", "tool", "args"}.
+    pending_approvals: list[dict[str, Any]] = field(default_factory=list)

@@ -13,6 +13,7 @@ class RunRead(BaseModel):
     agent_id: uuid.UUID
     status: str
     agent_version: int | None = None  # None = ran the draft
+    resume_of: uuid.UUID | None = None  # continuation of a run that awaited approval
     tool_call_count: int
     usage: dict[str, Any]
     error: str | None

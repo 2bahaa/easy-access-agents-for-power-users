@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     # Hosts custom HTTP tools may call (comma-separated; "*.example.com" wildcards).
     custom_tool_allowed_hosts: str = ""
 
+    # Pending approval requests expire after this long (then count as rejected).
+    approval_ttl_s: int = Field(default=86_400, ge=60)
+
     # Comma-separated list of allowed browser origins.
     cors_origins: str = "http://localhost:5173"
 

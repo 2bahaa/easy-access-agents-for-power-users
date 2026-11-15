@@ -21,6 +21,8 @@ import type {
   ProviderConnectionWrite,
   AgentExportDocument,
   AgentTemplate,
+  Approval,
+  ApprovalPolicy,
   CustomTool,
   CustomToolWrite,
   McpServer,
@@ -206,6 +208,21 @@ export const api = {
     return response.text();
   },
   importSkill: (markdown: string) => request<Skill>("/skills/import", json("POST", { markdown })),
+
+  // ---- approvals ----
+  listApprovals: (params: { status?: string; conversation_id?: string; run_id?: string } = {}) => {
+    const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]);
+    return request<Approval[]>(`/approvals${q.toString() ? `?${q}` : ""}`);
+  },
+  decideApproval: (id: string, decision: { approve: boolean; args?: Record<string, unknown>; note?: string }) =>
+    request<{ approval: Approval; continuation_run_id: string | null }>(
+      `/approvals/${id}/decide`,
+      json("POST", { decision: decision.approve ? "approve" : "reject", args: decision.args ?? null, note: decision.note ?? "" }),
+    ),
+  listApprovalPolicies: () => request<ApprovalPolicy[]>("/approval-policies"),
+  createApprovalPolicy: (tool_pattern: string, agent_id: string | null) =>
+    request<ApprovalPolicy>("/approval-policies", json("POST", { tool_pattern, agent_id })),
+  deleteApprovalPolicy: (id: string) => request<void>(`/approval-policies/${id}`, { method: "DELETE" }),
 
   // ---- MCP & custom tools ----
   listMcpServers: () => request<McpServer[]>("/mcp-servers"),

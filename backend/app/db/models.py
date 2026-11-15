@@ -248,6 +248,54 @@ class CustomTool(TimestampMixin, Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class ApprovalRequest(Base):
+    """A tool call held for human approval. Only an authenticated user can decide it."""
+
+    __tablename__ = "approval_requests"
+    __table_args__ = (UniqueConstraint("run_id", "call_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), index=True)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE")
+    )
+    agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"))
+    call_id: Mapped[str] = mapped_column(String(100))
+    tool_name: Mapped[str] = mapped_column(String(64))
+    args: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    # pending | approved | rejected | expired | cancelled
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    edited_args: Mapped[dict[str, Any] | None] = mapped_column()
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    note: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ApprovalPolicy(Base):
+    """Workspace rule: calls to tools matching `tool_pattern` (glob, e.g. "http__*") need
+    approval — for one agent or, with agent_id NULL, for every agent."""
+
+    __tablename__ = "approval_policies"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"))
+    tool_pattern: Mapped[str] = mapped_column(String(100))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 def _workspace_fk() -> Mapped[uuid.UUID]:
     return mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
 
@@ -370,6 +418,9 @@ class AgentTool(Base):
     )
     tool_name: Mapped[str] = mapped_column(String(64), primary_key=True)
     config: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    requires_approval: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
 
 
 class Conversation(TimestampMixin, Base):
@@ -385,7 +436,7 @@ class Conversation(TimestampMixin, Base):
     kind: Mapped[str] = mapped_column(String(16), default="chat", server_default="chat")
 
 
-ACTIVE_RUN_STATUSES = ("queued", "running")
+ACTIVE_RUN_STATUSES = ("queued", "running", "waiting_approval")
 
 
 class Run(Base):
@@ -396,7 +447,7 @@ class Run(Base):
             "uq_runs_active_conversation",
             "conversation_id",
             unique=True,
-            postgresql_where=text("status IN ('queued', 'running')"),
+            postgresql_where=text("status IN ('queued', 'running', 'waiting_approval')"),
         ),
         Index("ix_runs_queued", "started_at", postgresql_where=text("status = 'queued'")),
     )
@@ -411,6 +462,10 @@ class Run(Base):
     )
     status: Mapped[str] = mapped_column(String(32), default="queued")
     agent_version: Mapped[int | None] = mapped_column(Integer)  # None = ran the draft
+    # A continuation run executes the human decisions of the run it resumes.
+    resume_of: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="SET NULL"), index=True
+    )
     agent_snapshot: Mapped[dict[str, Any]] = mapped_column(default=dict)
     tool_call_count: Mapped[int] = mapped_column(Integer, default=0)
     usage: Mapped[dict[str, Any]] = mapped_column(default=dict)

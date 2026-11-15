@@ -23,6 +23,8 @@ function runNotice(run: Run): ChatItem | null {
   switch (run.status) {
     case "cancelled":
       return { ...base, kind: "notice", tone: "info", text: "Run cancelled." };
+    case "waiting_approval":
+      return { ...base, kind: "notice", tone: "warning", text: "Waiting for approval of a tool call." };
     case "limit_exceeded":
       return { ...base, kind: "notice", tone: "warning", text: failureText("limit_exceeded", undefined) };
     case "timeout":

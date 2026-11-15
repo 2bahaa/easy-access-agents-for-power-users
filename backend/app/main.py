@@ -12,6 +12,7 @@ from app.api.errors import register_error_handlers
 from app.api.ratelimit import SlidingWindowLimiter
 from app.api.routers import (
     agents,
+    approvals,
     auth,
     capabilities,
     conversations,
@@ -95,6 +96,7 @@ def create_app(
         app.include_router(module.router, prefix="/api")
     app.include_router(agents.templates_router, prefix="/api")
     app.include_router(capabilities.router, prefix="/api")
+    app.include_router(approvals.router, prefix="/api")
     app.include_router(skills.templates_router, prefix="/api")
     return app
 

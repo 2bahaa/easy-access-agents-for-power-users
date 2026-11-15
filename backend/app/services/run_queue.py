@@ -112,9 +112,14 @@ async def request_cancel(session: AsyncSession, run_id: uuid.UUID) -> bool:
     """Cancel a queued run immediately, or ask the owning worker to stop a running one.
     Returns False if the run is not active."""
     run = await session.scalar(select(Run).where(Run.id == run_id).with_for_update())
-    if run is None or run.status not in ("queued", "running"):
+    if run is None or run.status not in ("queued", "running", "waiting_approval"):
         return False
-    if run.status == "queued":
+    if run.status == "waiting_approval":  # its stream already ended; drop pending approvals
+        from app.services.approval_service import cancel_for_run
+
+        run.status, run.finished_at = "cancelled", func.now()
+        await cancel_for_run(session, run.id)
+    elif run.status == "queued":
         await _end_with_event(session, run, "cancelled", None, "run.cancelled")
     else:
         run.cancel_requested = True

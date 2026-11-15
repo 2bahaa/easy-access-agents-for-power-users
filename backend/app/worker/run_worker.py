@@ -26,7 +26,7 @@ from app.config import Settings
 from app.db.models import Run
 from app.runtime.events import TERMINAL_TYPES, AgentEvent
 from app.runtime.executor import AgentRun
-from app.services import run_queue, run_service
+from app.services import approval_service, run_queue, run_service
 from app.services.provider_service import ProviderResolver
 from app.services.pubsub import RUNS_CHANNEL, listen
 from app.tools.registry import ToolRegistry
@@ -164,6 +164,9 @@ class RunWorker:
         async with self.session_factory() as session:
             if n := await run_queue.reap_stale_runs(session, self.settings.run_stale_after_s):
                 logger.warning("Marked %d interrupted run(s) as failed", n)
+        async with self.session_factory() as session:
+            if n := await approval_service.expire_due(session):
+                logger.info("Expired %d approval request(s)", n)
 
     # ---- executing one run ----------------------------------------------------------
 
@@ -234,7 +237,9 @@ class RunWorker:
                     run = await session.get(Run, run_id)
                     if run is None:
                         return False
-                    await run_service.apply_result(session, run, agent_run.result)
+                    await run_service.apply_result(
+                        session, run, agent_run.result, self.settings.approval_ttl_s
+                    )
                 await session.commit()
             return True
         except IntegrityError:

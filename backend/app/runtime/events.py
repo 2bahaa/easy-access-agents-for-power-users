@@ -75,6 +75,15 @@ class ToolCallFailed(_EventBase):
     kind: ToolFailureKind
 
 
+class ApprovalRequested(_EventBase):
+    """A tool call was held for human approval (it has not been executed)."""
+
+    type: Literal["approval.requested"] = "approval.requested"
+    call_id: str
+    tool: str
+    args: dict[str, Any]
+
+
 class RunCompleted(_EventBase):
     type: Literal["run.completed"] = "run.completed"
     status: Literal["completed"] = "completed"
@@ -98,6 +107,14 @@ class RunCancelled(_EventBase):
     type: Literal["run.cancelled"] = "run.cancelled"
 
 
+class RunWaitingApproval(_EventBase):
+    """Terminal for this run: it paused until humans decide the pending tool calls; a
+    continuation run then executes the approved ones."""
+
+    type: Literal["run.waiting_approval"] = "run.waiting_approval"
+    pending: list[str]  # call ids
+
+
 AgentEvent = Annotated[
     RunStarted
     | ReasoningDelta
@@ -106,12 +123,14 @@ AgentEvent = Annotated[
     | ToolCallStarted
     | ToolCallCompleted
     | ToolCallFailed
+    | ApprovalRequested
     | RunCompleted
     | RunFailed
-    | RunCancelled,
+    | RunCancelled
+    | RunWaitingApproval,
     Field(discriminator="type"),
 ]
 
-TERMINAL_TYPES = frozenset({"run.completed", "run.failed", "run.cancelled"})
+TERMINAL_TYPES = frozenset({"run.completed", "run.failed", "run.cancelled", "run.waiting_approval"})
 
 agent_event_adapter: TypeAdapter[AgentEvent] = TypeAdapter(AgentEvent)

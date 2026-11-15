@@ -76,6 +76,8 @@ class ToolNode:
         self.grants = {g.name: g for g in grants}
         self.limits = limits
         self.ctx = ctx
+        # Filled during a run: calls held for human approval.
+        self.pending_approvals: list[dict[str, Any]] = []
 
     async def __call__(self, state: AgentState) -> dict[str, Any]:
         write = get_stream_writer()
@@ -93,9 +95,52 @@ class ToolNode:
                 out.append(self._message(LIMIT_MESSAGE, call_id, call["name"], error=True))
                 continue
             count += 1
+            grant = self.grants.get(call["name"])
+            if grant is not None and grant.requires_approval:
+                # Enforced here, independently of anything the model says: not executed,
+                # no ToolMessage yet; a human decides and a continuation run executes it.
+                args = call.get("args") or {}
+                self.pending_approvals.append(
+                    {"call_id": call_id, "tool": call["name"], "args": args}
+                )
+                write(
+                    ("approval.requested", {"call_id": call_id, "tool": call["name"], "args": args})
+                )
+                continue
             out.append(await self._execute(call, call_id, write))
-
+        if self.pending_approvals and stop_reason is None:
+            stop_reason = "approval_required"
         return {"messages": out, "tool_call_count": count, "stop_reason": stop_reason}
+
+    async def resume(
+        self,
+        last: AIMessage,
+        approved: dict[str, dict[str, Any]],
+        rejected: dict[str, str],
+        write: Any,
+    ) -> list[ToolMessage]:
+        """Answer the calls a previous run paused on: execute approved ones (with the
+        possibly edited arguments, still fully validated) and refuse rejected ones."""
+        out: list[ToolMessage] = []
+        for call in last.tool_calls:
+            call_id = call.get("id") or ""
+            if call_id in approved:
+                out.append(await self._execute({**call, "args": approved[call_id]}, call_id, write))
+            elif call_id in rejected:
+                reason = rejected[call_id]
+                write(
+                    (
+                        "tool.call.failed",
+                        {
+                            "call_id": call_id,
+                            "tool": call["name"],
+                            "error": reason,
+                            "kind": "permission",
+                        },
+                    )
+                )
+                out.append(self._message(f"Error: {reason}", call_id, call["name"], error=True))
+        return out
 
     @staticmethod
     def _message(content: str, call_id: str, name: str, *, error: bool) -> ToolMessage:

@@ -34,6 +34,7 @@ from app.runtime.types import (
 from app.services import (
     agent_platform,
     agent_service,
+    approval_service,
     audit_service,
     capability_service,
     conversation_service,
@@ -72,7 +73,10 @@ def to_agent_config(agent: Agent) -> AgentConfig:
             )
             for link in agent.skill_links
         ],
-        tools=[ToolGrant(name=t.tool_name, config=t.config) for t in agent.tool_links],
+        tools=[
+            ToolGrant(name=t.tool_name, config=t.config, requires_approval=t.requires_approval)
+            for t in agent.tool_links
+        ],
         max_tool_calls=agent.max_tool_calls,
         run_timeout_s=agent.run_timeout_s,
     )
@@ -101,10 +105,13 @@ def _uuid(value: str | None) -> uuid.UUID:
         return uuid.uuid4()
 
 
-def _with_answered_tool_calls(messages: list[BaseMessage]) -> list[BaseMessage]:
+def _with_answered_tool_calls(
+    messages: list[BaseMessage], awaiting: frozenset[str] = frozenset()
+) -> list[BaseMessage]:
     """Add error ToolMessages for tool calls that never got a result (cancel/timeout),
-    so the stored history stays valid for the next turn."""
-    answered = {m.tool_call_id for m in messages if isinstance(m, ToolMessage)}
+    so the stored history stays valid for the next turn. Calls awaiting approval are left
+    open: the continuation run answers them."""
+    answered = {m.tool_call_id for m in messages if isinstance(m, ToolMessage)} | set(awaiting)
     out = list(messages)
     for m in messages:
         if isinstance(m, AIMessage):
@@ -149,12 +156,17 @@ async def _next_seq(session: AsyncSession, conversation_id: uuid.UUID) -> int:
     return (current or 0) + 1
 
 
-async def apply_result(session: AsyncSession, run: Run, result: RunResult) -> None:
+async def apply_result(
+    session: AsyncSession, run: Run, result: RunResult, approval_ttl_s: float = 86_400
+) -> None:
     """Write a finished run's messages and final status (caller commits, together with
     the terminal event, so subscribers never see the end before the messages)."""
     next_seq = await _next_seq(session, run.conversation_id)
-    for offset, msg in enumerate(_with_answered_tool_calls(result.new_messages)):
+    awaiting = frozenset(str(p["call_id"]) for p in result.pending_approvals)
+    for offset, msg in enumerate(_with_answered_tool_calls(result.new_messages, awaiting)):
         session.add(_to_row(msg, run.conversation_id, run.id, next_seq + offset))
+    if result.status == "waiting_approval":
+        approval_service.create_requests(session, run, result.pending_approvals, approval_ttl_s)
     run.status = result.status if result.status != "running" else "failed"
     run.tool_call_count = result.tool_call_count
     run.usage = result.usage
@@ -198,6 +210,8 @@ async def start_run(
     config, agent_version = await agent_platform.runtime_config_for_chat(
         session, agent, playground=conversation.kind == "playground"
     )
+    # Workspace approval policies apply to every run (published or draft).
+    config = await approval_service.apply_policies(session, ws, agent.id, config)
     await resolver.resolve(session, ws, config.provider, config.connection_id)  # 404/422 early
 
     user_message = Message(
@@ -256,6 +270,7 @@ async def prepare_agent_run(
                 session, run.workspace_id, settings, resolver.secrets, names=external
             )
         )
+    resume = await approval_service.decisions_for(session, run.resume_of) if run.resume_of else None
     return AgentRun(
         RunRequest(
             run_id=run.id,
@@ -263,6 +278,7 @@ async def prepare_agent_run(
             history=to_langchain(messages),
             conversation_id=run.conversation_id,
             user_message_id=user_message_id,
+            resume=resume,
         ),
         provider,
         tools,

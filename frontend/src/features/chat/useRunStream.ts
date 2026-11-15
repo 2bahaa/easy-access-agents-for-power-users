@@ -70,6 +70,7 @@ export function useRunStream() {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: keys.conversation(conversationId) }),
           queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+          queryClient.invalidateQueries({ queryKey: ["approvals"] }),
         ]);
         setPending(null);
       }
