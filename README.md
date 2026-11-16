@@ -4,6 +4,14 @@ An Agent Studio for building, configuring and running your own AI agents on loca
 models: pick a model, write instructions, attach Markdown skills, allow specific tools,
 and watch tokens and tool calls stream live.
 
+## Demo video
+
+[![Watch the demo video](docs/media/demo.jpg)](docs/media/demo.mp4)
+
+<video src="https://github.com/2bahaa/easy-access-agents-for-power-users/raw/main/docs/media/demo.mp4" controls width="100%"></video>
+
+> Click the image to open the video ([docs/media/demo.mp4](docs/media/demo.mp4)).
+
 > Status: **V2 complete** (phases 0–12, see [V2_PROGRESS.md](V2_PROGRESS.md)). It is a multi-tenant agent platform with
 > several providers, MCP and custom tools, knowledge/RAG and memory, human approvals, visual workflows,
 > multi-agent teams, run analytics, an embeddable UI SDK and production hardening.
